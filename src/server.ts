@@ -1,12 +1,16 @@
 import app from './app';
 import { config } from './config/constants';
 import logger from './utils/logger';
+import { cronService } from './services/cronService';
 
 const PORT = config.PORT || 3001;
 
 const server = app.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT} in ${config.NODE_ENV} mode`);
   logger.info(`📊 API Documentation: http://localhost:${PORT}/api/v1/docs`);
+  
+  // Start cron jobs
+  cronService.startJobs();
 });
 
 // Graceful shutdown
@@ -24,6 +28,33 @@ process.on('SIGINT', () => {
     logger.info('Process terminated');
     process.exit(0);
   });
+});
+
+// Handle unhandled promise rejections (CRITICAL FOR AWS PRODUCTION)
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  logger.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Log but don't crash in production to maintain uptime
+  if (config.NODE_ENV === 'production') {
+    logger.error('⚠️ Unhandled promise rejection logged - server continuing');
+  }
+});
+
+// Handle uncaught exceptions (CRITICAL FOR AWS PRODUCTION)
+process.on('uncaughtException', (error: Error) => {
+  logger.error('🚨 FATAL: Uncaught Exception:', error);
+  logger.error('Stack trace:', error.stack);
+  logger.error('Server shutting down gracefully...');
+  
+  server.close(() => {
+    logger.error('Server closed. Process exiting.');
+    process.exit(1);
+  });
+  
+  // Force exit after 10 seconds if graceful shutdown fails
+  setTimeout(() => {
+    logger.error('⚠️ Forced shutdown - graceful close timeout exceeded');
+    process.exit(1);
+  }, 10000);
 });
 
 export default server;

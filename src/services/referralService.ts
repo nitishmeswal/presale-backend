@@ -51,7 +51,10 @@ export const referralService = {
       user_id: referrerId,
       amount: EARNINGS_CONFIG.REFERRAL_BONUS,
       type: 'referral',
+      reward_type: 'referral',  // Keep for backwards compatibility
+      earning_type: 'referral',  // ✅ Use earning_type for chart grouping
       status: 'confirmed',
+      is_claimed: false,
       description: `Referral bonus for inviting user ${referredUserId}`,
     });
 

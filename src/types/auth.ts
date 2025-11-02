@@ -20,8 +20,11 @@ export interface User {
   email: string;
   username: string;
   createdAt: string;
+  memberSince?: string;
   totalEarnings?: number;
   referralCode?: string;
+  walletAddress?: string;
+  plan?: string;
 }
 
 export interface UpdateProfileRequest {

@@ -4,6 +4,8 @@ import { generateToken } from '../config/auth';
 import { generateReferralCode } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../utils/constants';
 import { AuthResponse, User, UpdateProfileRequest } from '../types/auth';
+import { computeAppSync } from './computeAppSync';
+import logger from '../utils/logger';
 
 export const authService = {
   async signup(
@@ -91,6 +93,22 @@ export const authService = {
       throw new Error(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
 
+    // 🔥 SYNC PLAN FROM COMPUTE APP ON LOGIN
+    let currentPlan = user.plan || 'free';
+    try {
+      const computeAppPlan = await computeAppSync.getUserPlan(user.email);
+      if (computeAppPlan !== currentPlan) {
+        logger.info(`📊 Login: Plan sync ${user.email} ${currentPlan} → ${computeAppPlan}`);
+        await supabaseAdmin
+          .from('user_profiles')
+          .update({ plan: computeAppPlan })
+          .eq('id', user.id);
+        currentPlan = computeAppPlan;
+      }
+    } catch (syncError) {
+      logger.error('Error syncing plan on login:', syncError);
+    }
+
     // Generate JWT token
     const token = generateToken({
       userId: user.id,
@@ -109,6 +127,7 @@ export const authService = {
       username: user.user_name,
       createdAt: user.joined_at,
       referralCode: user.referral_code,
+      plan: currentPlan,
     };
 
     return { user: userData, token };
@@ -117,12 +136,34 @@ export const authService = {
   async getProfile(userId: string): Promise<User> {
     const { data: user, error } = await supabaseAdmin
       .from('user_profiles')
-      .select('*')
+      .select('id, email, user_name, joined_at, referral_code, wallet_address, wallet_type, plan')
       .eq('id', userId)
       .single();
 
     if (error || !user) {
       throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+    }
+
+    // 🔥 SYNC PLAN FROM COMPUTE APP
+    let currentPlan = user.plan || 'free';
+    try {
+      const computeAppPlan = await computeAppSync.getUserPlan(user.email);
+      
+      // If plan changed, update local database
+      if (computeAppPlan !== currentPlan) {
+        logger.info(`📊 Plan update detected: ${user.email} ${currentPlan} → ${computeAppPlan}`);
+        
+        await supabaseAdmin
+          .from('user_profiles')
+          .update({ plan: computeAppPlan })
+          .eq('id', userId);
+        
+        currentPlan = computeAppPlan;
+        logger.info(`✅ Plan updated successfully for ${user.email}`);
+      }
+    } catch (syncError) {
+      logger.error('Error syncing plan from Compute App:', syncError);
+      // Continue with local plan if sync fails
     }
 
     // Get total earnings
@@ -139,8 +180,11 @@ export const authService = {
       email: user.email,
       username: user.user_name,
       createdAt: user.joined_at,
+      memberSince: user.joined_at,
       totalEarnings,
       referralCode: user.referral_code,
+      walletAddress: user.wallet_address || null,
+      plan: currentPlan,
     };
   },
 
@@ -152,7 +196,7 @@ export const authService = {
       .from('user_profiles')
       .update(updates)
       .eq('id', userId)
-      .select()
+      .select('id, email, user_name, joined_at, referral_code, wallet_address, plan')
       .single();
 
     if (error) {
@@ -164,7 +208,10 @@ export const authService = {
       email: updatedUser.email,
       username: updatedUser.user_name,
       createdAt: updatedUser.joined_at,
+      memberSince: updatedUser.joined_at,
       referralCode: updatedUser.referral_code,
+      walletAddress: updatedUser.wallet_address || null,
+      plan: updatedUser.plan || 'free',
     };
   },
 

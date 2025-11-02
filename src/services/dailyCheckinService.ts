@@ -5,49 +5,61 @@ export const dailyCheckinService = {
   // Get user's current streak information
   async getStreak(userId: string): Promise<any> {
     try {
-      // Get the most recent check-in for this user
-      const { data: latestCheckin } = await supabaseAdmin
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // Get last check-in
+      const { data: checkins } = await supabaseAdmin
         .from('daily_checkins')
         .select('*')
         .eq('user_id', userId)
         .order('check_in_date', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (!latestCheckin) {
+      const lastCheckin = checkins?.[0] || null;
+
+      // No check-ins yet
+      if (!lastCheckin) {
+        logger.info(`📊 ${userId}: First time - Day 1 next`);
         return {
           currentStreak: 0,
           lastCheckinDate: null,
           nextRewardDay: 1,
-          canCheckinToday: true
+          canCheckIn: true,
+          canCheckInToday: true
         };
       }
 
-      // Check if user has already checked in today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const lastCheckinDate = new Date(latestCheckin.check_in_date);
-      lastCheckinDate.setHours(0, 0, 0, 0);
-
-      const canCheckinToday = lastCheckinDate < today;
-
-      // Calculate current streak
-      let currentStreak = latestCheckin.streak_count || 0;
+      const lastDate = lastCheckin.check_in_date;
       
-      // If last check-in was not yesterday, streak is broken
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      if (lastCheckinDate < yesterday && canCheckinToday) {
-        currentStreak = 0; // Streak broken
+      // Already checked in today
+      if (lastDate === today) {
+        logger.info(`📊 ${userId}: Already checked in today`);
+        return {
+          currentStreak: lastCheckin.streak_count,
+          lastCheckinDate: lastDate,
+          nextRewardDay: lastCheckin.day_number,
+          canCheckIn: false,
+          canCheckInToday: false
+        };
       }
+
+      // Calculate if streak continues (yesterday) or breaks
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      const streakContinues = (lastDate === yesterdayStr);
+      const currentStreak = streakContinues ? lastCheckin.streak_count : 0;
+      const nextDay = streakContinues ? (lastCheckin.day_number % 7) + 1 : 1;
+
+      logger.info(`📊 ${userId}: Can check in - Day ${nextDay} next (streak ${streakContinues ? 'continues' : 'broken'})`);
 
       return {
         currentStreak,
-        lastCheckinDate: latestCheckin.check_in_date,
-        nextRewardDay: (currentStreak % 7) + 1, // Cycle every 7 days
-        canCheckinToday,
-        dayNumber: latestCheckin.day_number
+        lastCheckinDate: lastDate,
+        nextRewardDay: nextDay,
+        canCheckIn: true,
+        canCheckInToday: true
       };
     } catch (error) {
       logger.error('Error getting streak:', error);
@@ -58,68 +70,85 @@ export const dailyCheckinService = {
   // Perform daily check-in
   async performCheckin(userId: string): Promise<any> {
     try {
-      // Get current streak info
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // Get streak info (calculates next day & blocks if already checked in)
       const streakInfo = await this.getStreak(userId);
 
-      if (!streakInfo.canCheckinToday) {
+      // Block if already checked in today
+      if (!streakInfo.canCheckIn) {
+        logger.info(`❌ ${userId}: Already checked in today`);
         return {
           message: 'You have already checked in today',
           data: streakInfo
         };
       }
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Calculate new streak
+      // Calculate values
       const newStreak = streakInfo.currentStreak + 1;
-      const dayNumber = ((newStreak - 1) % 7) + 1; // 1-7 cycle
-
-      // Reward amounts by day (7-day cycle)
-      const rewardsByDay = [1, 2, 3, 5, 8, 13, 21]; // Fibonacci-like progression
+      const dayNumber = streakInfo.nextRewardDay; // Already calculated by getStreak
+      const rewardsByDay = [5, 10, 15, 20, 25, 30, 50]; // Day 1-7
       const reward = rewardsByDay[dayNumber - 1];
 
-      // Insert new check-in record
-      const { data: checkin, error: checkinError } = await supabaseAdmin
+      logger.info(`🔄 ${userId}: Check-in Day ${dayNumber}, Streak ${newStreak}, Reward ${reward} SP`);
+
+      // Insert check-in record
+      const { error: checkinError } = await supabaseAdmin
         .from('daily_checkins')
         .insert({
           user_id: userId,
-          check_in_date: today.toISOString().split('T')[0], // YYYY-MM-DD format
-          streak_count: newStreak,
+          check_in_date: today,
           day_number: dayNumber,
+          streak_count: newStreak,
           reward_amount: reward
-        })
-        .select()
-        .single();
+        });
 
       if (checkinError) {
-        logger.error('Error creating check-in record:', checkinError);
-        throw new Error('Failed to create check-in record');
+        logger.error(`❌ ${userId}: Insert failed:`, checkinError);
+        throw new Error(`Failed to save check-in: ${checkinError.message}`);
       }
 
-      // Create earning record
+      // Add to earnings
       await supabaseAdmin
         .from('earnings')
         .insert({
           user_id: userId,
           amount: reward,
+          earning_type: 'daily_checkin',
           reward_type: 'daily_checkin',
           is_claimed: false,
-          description: `Daily check-in Day ${dayNumber} - ${newStreak} day streak`
+          description: `Day ${dayNumber} check-in reward`
         });
 
+      // Update unclaimed_reward
+      const { data: profile } = await supabaseAdmin
+        .from('user_profiles')
+        .select('unclaimed_reward')
+        .eq('id', userId)
+        .single();
+
+      if (profile) {
+        await supabaseAdmin
+          .from('user_profiles')
+          .update({ unclaimed_reward: (profile.unclaimed_reward || 0) + reward })
+          .eq('id', userId);
+      }
+
+      logger.info(`✅ ${userId}: Check-in complete!`);
+
       return {
-        message: `Check-in successful! Day ${dayNumber} reward: ${reward} SP`,
+        message: `Day ${dayNumber} reward: ${reward} SP!`,
         data: {
           currentStreak: newStreak,
           dayNumber,
           reward,
-          nextRewardDay: (newStreak % 7) + 1,
-          canCheckinToday: false
+          nextRewardDay: (dayNumber % 7) + 1,
+          canCheckIn: false,
+          canCheckInToday: false
         }
       };
     } catch (error) {
-      logger.error('Error performing check-in:', error);
+      logger.error('Check-in error:', error);
       throw error;
     }
   }

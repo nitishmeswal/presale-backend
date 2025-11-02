@@ -12,15 +12,18 @@ export const taskService = {
     taskType?: string,
     hardwareTier?: string,
     multiplier?: number
-  ): Promise<{ unclaimed_reward: number; success: boolean; task_id?: string }> {
+  ): Promise<{ unclaimed_reward: number; total_unclaimed_reward: number; task_count: number; success: boolean; task_id?: string }> {
     try {
-      // Create earning record (unclaimed)
+      logger.info(`📝 Task completion: User=${userId}, Amount=${incrementAmount}, Type=${taskType}`);
+
+      // 1. Create earning record (unclaimed)
       const { data: earning, error: earningError } = await supabaseAdmin
         .from('earnings')
         .insert({
           user_id: userId,
           amount: incrementAmount,
-          reward_type: 'task_completion',
+          reward_type: 'task_completion',  // Keep for backwards compatibility
+          earning_type: 'task_completion',  // ✅ Use earning_type for chart grouping
           is_claimed: false,
           description: `Task completion: ${taskType || 'unknown'}`,
           metadata: { task_id: taskId, hardware_tier: hardwareTier, multiplier }
@@ -33,17 +36,72 @@ export const taskService = {
         throw new Error('Failed to create earning record');
       }
 
-      // Get total unclaimed rewards
-      const { data: unclaimedEarnings } = await supabaseAdmin
-        .from('earnings')
-        .select('amount')
-        .eq('user_id', userId)
-        .eq('is_claimed', false);
+      // 2. Update user_profiles: increment task count and unclaimed rewards
+      const { data: userProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('task_completed, unclaimed_reward')
+        .eq('id', userId)
+        .single();
 
-      const totalUnclaimed = unclaimedEarnings?.reduce((sum, e) => sum + parseFloat(e.amount.toString()), 0) || 0;
+      if (profileError) {
+        logger.error('❌ Error fetching user profile:', profileError);
+        throw new Error('Failed to fetch user profile');
+      }
 
+      const newTaskCount = (userProfile?.task_completed || 0) + 1;
+      const newUnclaimedReward = (userProfile?.unclaimed_reward || 0) + incrementAmount;
+
+      logger.info(`📊 Updating user profile: TaskCount ${userProfile?.task_completed || 0} → ${newTaskCount}, Unclaimed ${userProfile?.unclaimed_reward || 0} → ${newUnclaimedReward}`);
+
+      const { error: updateError } = await supabaseAdmin
+        .from('user_profiles')
+        .update({
+          task_completed: newTaskCount,
+          unclaimed_reward: newUnclaimedReward
+        })
+        .eq('id', userId);
+
+      if (updateError) {
+        logger.error('❌ Error updating user profile:', updateError);
+        throw new Error('Failed to update user profile');
+      }
+
+      // 3. Update global stats based on task type
+      if (taskType) {
+        const statsMap: Record<string, string> = {
+          'three_d': 'TOTAL_3D_TASKS',
+          '3d': 'TOTAL_3D_TASKS',
+          'video': 'TOTAL_VIDEO_TASKS',
+          'text': 'TOTAL_TEXT_TASKS',
+          'image': 'TOTAL_IMAGE_TASKS'
+        };
+
+        const statId = statsMap[taskType.toLowerCase()];
+        if (statId) {
+          const { data: currentStat } = await supabaseAdmin
+            .from('global_stats')
+            .select('total_tasks_completed')
+            .eq('id', statId)
+            .single();
+
+          if (currentStat) {
+            await supabaseAdmin
+              .from('global_stats')
+              .update({
+                total_tasks_completed: (currentStat.total_tasks_completed || 0) + 1
+              })
+              .eq('id', statId);
+          }
+        }
+      }
+
+      logger.info(`✅ Task completed: TaskCount=${newTaskCount}, UnclaimedReward=${newUnclaimedReward}`);
+
+      // 4. Return updated totals
       return {
-        unclaimed_reward: totalUnclaimed,
+        unclaimed_reward: incrementAmount,
+        total_unclaimed_reward: newUnclaimedReward,
+        task_count: newTaskCount,
         success: true,
         task_id: earning.id
       };
@@ -183,23 +241,23 @@ export const taskService = {
 
   async getTaskStats(userId: string): Promise<any> {
     try {
-      // Get user profile with total_tasks_completed
+      // Get user profile with task_completed (correct column name!)
       const { data: profile } = await supabaseAdmin
         .from('user_profiles')
-        .select('total_tasks_completed')
+        .select('task_completed')
         .eq('id', userId)
         .single();
 
-      const totalTasksCompleted = profile?.total_tasks_completed || 0;
+      const totalTasksCompleted = profile?.task_completed || 0;
 
-      // Get earnings from task completions
-      const { data: taskEarnings } = await supabaseAdmin
-        .from('earnings')
-        .select('amount')
+      // Get total earnings from earnings_history (not earnings table!)
+      const { data: history } = await supabaseAdmin
+        .from('earnings_history')
+        .select('total_amount')
         .eq('user_id', userId)
-        .eq('reward_type', 'task_completion');
+        .single();
 
-      const totalEarnings = taskEarnings?.reduce((sum, e) => sum + parseFloat(e.amount.toString()), 0) || 0;
+      const totalEarnings = parseFloat(history?.total_amount?.toString() || '0');
 
       // Get today's completed tasks
       const today = new Date();

@@ -12,10 +12,24 @@ export const sessionController = {
         sendError(res, ERROR_MESSAGES.UNAUTHORIZED, 'User ID not found', 401);
         return;
       }
-      const { device_id } = req.body;
-      const session = await sessionService.startSession(userId, device_id);
+      
+      const { device_id, force_takeover } = req.body;
+      const forceTakeover = force_takeover === true || force_takeover === 'true';
+      
+      const session = await sessionService.startSession(userId, device_id, forceTakeover);
       sendSuccess(res, SUCCESS_MESSAGES.SESSION_STARTED, session, 201);
     } catch (error: any) {
+      // Return session info if active session exists
+      if (error.code === 'ACTIVE_SESSION_EXISTS' && error.sessionInfo) {
+        res.status(409).json({
+          success: false,
+          message: error.message,
+          error: error.sessionInfo,
+          code: 'ACTIVE_SESSION_EXISTS'
+        });
+        return;
+      }
+      
       sendError(res, error.message || 'Failed to start session', error.toString(), 400);
     }
   },

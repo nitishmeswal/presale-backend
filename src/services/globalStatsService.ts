@@ -1,12 +1,12 @@
 import { supabaseAdmin } from '../config/database';
 import logger from '../utils/logger';
 
-// Compute multipliers (from your edge function)
+// Compute multipliers in TFLOPS
 const COMPUTE_MULTIPLIERS = {
-  text: 0.12,
-  image: 0.4,
-  three_d: 0.8,
-  video: 1.6
+  text: 1,      // 1 TFLOPS
+  image: 1.5,   // 1.5 TFLOPS
+  three_d: 2,   // 2 TFLOPS
+  video: 4      // 4 TFLOPS
 };
 
 export const globalStatsService = {
@@ -60,6 +60,13 @@ export const globalStatsService = {
     global_sp: number;
     total_users: number;
     global_compute_generated: number;
+    total_tasks: number;
+    task_breakdown: {
+      total_3d_tasks: number;
+      total_image_tasks: number;
+      total_text_tasks: number;
+      total_video_tasks: number;
+    };
   }> {
     try {
       // Get total earnings (global_sp)
@@ -80,21 +87,35 @@ export const globalStatsService = {
         .select('id, total_tasks_completed')
         .in('id', ['TOTAL_3D_TASKS', 'TOTAL_IMAGE_TASKS', 'TOTAL_TEXT_TASKS', 'TOTAL_VIDEO_TASKS']);
 
-      // Calculate global compute generated
+      // Calculate global compute generated and task counts
       let globalComputeGenerated = 0;
+      let totalTasks = 0;
+      const taskBreakdown = {
+        total_3d_tasks: 0,
+        total_image_tasks: 0,
+        total_text_tasks: 0,
+        total_video_tasks: 0
+      };
+
       globalStatsData?.forEach((stat) => {
         const count = Number(stat.total_tasks_completed) || 0;
+        totalTasks += count;
+        
         switch (stat.id) {
           case 'TOTAL_3D_TASKS':
+            taskBreakdown.total_3d_tasks = count;
             globalComputeGenerated += count * COMPUTE_MULTIPLIERS.three_d;
             break;
           case 'TOTAL_IMAGE_TASKS':
+            taskBreakdown.total_image_tasks = count;
             globalComputeGenerated += count * COMPUTE_MULTIPLIERS.image;
             break;
           case 'TOTAL_TEXT_TASKS':
+            taskBreakdown.total_text_tasks = count;
             globalComputeGenerated += count * COMPUTE_MULTIPLIERS.text;
             break;
           case 'TOTAL_VIDEO_TASKS':
+            taskBreakdown.total_video_tasks = count;
             globalComputeGenerated += count * COMPUTE_MULTIPLIERS.video;
             break;
         }
@@ -103,7 +124,9 @@ export const globalStatsService = {
       return {
         global_sp: Number(globalSp.toFixed(2)),
         total_users: totalUsers || 0,
-        global_compute_generated: Number(globalComputeGenerated.toFixed(2))
+        global_compute_generated: Number(globalComputeGenerated.toFixed(2)),
+        total_tasks: totalTasks,
+        task_breakdown: taskBreakdown
       };
     } catch (error) {
       logger.error('Error getting global stats:', error);
@@ -211,4 +234,102 @@ export const globalStatsService = {
       throw error;
     }
   },
+
+  // Get complete global statistics for Global Statistics page
+  async getCompleteGlobalStats(userId?: string): Promise<{
+    user_rank: string;
+    global_sp: number;
+    total_users: number;
+    global_compute_generated: number;
+    total_tasks: number;
+    task_breakdown: {
+      total_3d_tasks: number;
+      total_image_tasks: number;
+      total_text_tasks: number;
+      total_video_tasks: number;
+    };
+  }> {
+    try {
+      // Get total users count
+      const { count: totalUsers } = await supabaseAdmin
+        .from('user_profiles')
+        .select('*', { count: 'exact', head: true });
+
+      // Get global SP (sum of all earnings)
+      const { data: earningsData } = await supabaseAdmin
+        .from('earnings_history')
+        .select('total_amount');
+
+      const globalSp = earningsData?.reduce((sum, record) => sum + Number(record.total_amount), 0) || 0;
+
+      // Get task stats for compute calculation
+      const { data: taskStats } = await supabaseAdmin
+        .from('global_stats')
+        .select('id, total_tasks_completed')
+        .in('id', ['TOTAL_3D_TASKS', 'TOTAL_IMAGE_TASKS', 'TOTAL_TEXT_TASKS', 'TOTAL_VIDEO_TASKS']);
+
+      // Calculate global compute in TFLOPS and total tasks
+      let globalComputeGenerated = 0;
+      let totalTasks = 0;
+      const taskBreakdown = {
+        total_3d_tasks: 0,
+        total_image_tasks: 0,
+        total_text_tasks: 0,
+        total_video_tasks: 0
+      };
+
+      taskStats?.forEach((stat) => {
+        const count = Number(stat.total_tasks_completed) || 0;
+        totalTasks += count;
+        
+        switch (stat.id) {
+          case 'TOTAL_3D_TASKS':
+            taskBreakdown.total_3d_tasks = count;
+            globalComputeGenerated += count * COMPUTE_MULTIPLIERS.three_d;
+            break;
+          case 'TOTAL_IMAGE_TASKS':
+            taskBreakdown.total_image_tasks = count;
+            globalComputeGenerated += count * COMPUTE_MULTIPLIERS.image;
+            break;
+          case 'TOTAL_TEXT_TASKS':
+            taskBreakdown.total_text_tasks = count;
+            globalComputeGenerated += count * COMPUTE_MULTIPLIERS.text;
+            break;
+          case 'TOTAL_VIDEO_TASKS':
+            taskBreakdown.total_video_tasks = count;
+            globalComputeGenerated += count * COMPUTE_MULTIPLIERS.video;
+            break;
+        }
+      });
+
+      // Get user rank if userId provided
+      let userRank = 'N/A';
+      if (userId) {
+        // Get all users ordered by total_balance
+        const { data: rankedUsers } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id, total_balance')
+          .order('total_balance', { ascending: false });
+
+        if (rankedUsers) {
+          const rankIndex = rankedUsers.findIndex(u => u.id === userId);
+          if (rankIndex !== -1) {
+            userRank = `#${rankIndex + 1}`;
+          }
+        }
+      }
+
+      return {
+        user_rank: userRank,
+        global_sp: Number(globalSp.toFixed(2)),
+        total_users: totalUsers || 0,
+        global_compute_generated: Number(globalComputeGenerated.toFixed(2)),
+        total_tasks: totalTasks,
+        task_breakdown: taskBreakdown
+      };
+    } catch (error) {
+      logger.error('Error getting complete global stats:', error);
+      throw error;
+    }
+  }
 };

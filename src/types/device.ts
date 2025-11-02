@@ -5,7 +5,7 @@ export interface Device {
   gpuModel: string;
   hashRate: number;
   deviceType: 'desktop' | 'laptop' | 'mobile' | 'server';
-  rewardTier?: 'bronze' | 'silver' | 'gold' | 'platinum';
+  rewardTier?: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
   status: 'offline' | 'online' | 'busy';
   lastSeenAt?: string;
   uptime: number;
@@ -21,7 +21,7 @@ export interface RegisterDeviceRequest {
   gpu_model: string;
   device_type?: 'desktop' | 'laptop' | 'mobile' | 'server';
   hash_rate?: number;
-  reward_tier?: 'bronze' | 'silver' | 'gold' | 'platinum';
+  reward_tier?: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
   stake_amount?: number;
   performance_score?: number;
 }

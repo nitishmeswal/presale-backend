@@ -5,7 +5,7 @@ import logger from '../utils/logger';
 import { globalStatsService } from './globalStatsService';
 
 export const sessionService = {
-  async startSession(userId: string, deviceId: string): Promise<Session> {
+  async startSession(userId: string, deviceId: string, forceTakeover: boolean = false): Promise<Session> {
     // Check if device exists and belongs to user
     const { data: device } = await supabaseAdmin
       .from('devices')
@@ -19,14 +19,31 @@ export const sessionService = {
     }
 
     // Check if device already has an active session
-    if (device.session_token && device.status === 'online') {
-      throw new Error('Device already has an active session');
+    if (device.session_token && device.status === 'online' && !forceTakeover) {
+      const sessionInfo = {
+        hasActiveSession: true,
+        sessionToken: device.session_token,
+        sessionCreatedAt: device.session_created_at,
+        deviceId: device.id,
+        deviceName: device.device_name
+      };
+      
+      logger.warn(`⚠️ Device ${deviceId} already has an active session. Use forceTakeover to override.`);
+      throw Object.assign(
+        new Error('Device already has an active session'),
+        { sessionInfo, code: 'ACTIVE_SESSION_EXISTS' }
+      );
+    }
+
+    // If forceTakeover, log the takeover action
+    if (forceTakeover && device.session_token) {
+      logger.info(`🔄 Force takeover initiated for device ${deviceId}. Old session: ${device.session_token}`);
     }
 
     // Generate session token
     const sessionToken = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     
-    // Update device with session token (OLD MVP way)
+    // Update device with session token (overwrites existing if forceTakeover=true)
     const { data: updatedDevice, error } = await supabaseAdmin
       .from('devices')
       .update({
@@ -43,6 +60,8 @@ export const sessionService = {
     if (error) {
       throw new Error(error.message);
     }
+
+    logger.info(`✅ Session started for device ${deviceId}. Token: ${sessionToken.substring(0, 20)}...`);
 
     return {
       id: updatedDevice.id,

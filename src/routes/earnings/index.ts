@@ -7,6 +7,35 @@ const router = Router();
 // All earning routes require authentication
 router.use(authenticate);
 
+// GET /api/v1/earnings/stats - Get detailed earnings stats (MUST BE BEFORE '/')
+router.get('/stats', async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.json({
+        success: false,
+        message: 'Unauthorized',
+        data: null
+      });
+    }
+    
+    const { earningService } = await import('../../services/earningService');
+    const stats = await earningService.getDetailedStats(userId);
+    
+    res.json({
+      success: true,
+      message: 'Task statistics retrieved successfully',
+      data: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch stats',
+      data: null
+    });
+  }
+});
+
 // GET /api/v1/earnings - Get total earnings
 router.get('/', earningController.getTotalEarnings);
 
