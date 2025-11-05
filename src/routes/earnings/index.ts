@@ -1,6 +1,8 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { earningController } from '../../controllers/earningController';
 import { authenticate } from '../../middleware/auth';
+import { sendSuccess, sendError } from '../../utils/helpers';
+import { claimLimiter } from '../../middleware/rateLimiter';
 
 const router = Router();
 
@@ -12,35 +14,32 @@ router.get('/stats', async (req, res) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.json({
-        success: false,
-        message: 'Unauthorized',
-        data: null
-      });
+      sendError(res, 'Unauthorized', 'User not authenticated', 401);
+      return;
     }
-    
-    const { earningService } = await import('../../services/earningService');
-    const stats = await earningService.getDetailedStats(userId);
-    
-    res.json({
-      success: true,
-      message: 'Task statistics retrieved successfully',
-      data: stats
+
+    const { data, error } = await (await import('../../config/database')).supabaseAdmin
+      .from('earnings')
+      .select('amount, earning_type, created_at, reward_type')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    sendSuccess(res, 'Earnings stats retrieved successfully', {
+      earnings: data || [],
+      total: data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
     });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch stats',
-      data: null
-    });
+    sendError(res, 'Failed to get earnings stats', error.message, 500);
   }
 });
 
 // GET /api/v1/earnings - Get total earnings
 router.get('/', earningController.getTotalEarnings);
 
-// POST /api/v1/claim-rewards - Claim unclaimed rewards (ATOMIC)
-router.post('/', earningController.claimEarnings);
+// POST /api/v1/claim-rewards - Claim unclaimed rewards (100/day limit)
+router.post('/', claimLimiter, earningController.claimEarnings);
 
 // GET /api/v1/earnings/history - Get earning history
 router.get('/history', earningController.getEarningHistory);

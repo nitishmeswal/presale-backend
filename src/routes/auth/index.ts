@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { authController } from '../../controllers/authController';
+import { passwordResetController } from '../../controllers/passwordResetController';
+import { googleAuthController } from '../../controllers/googleAuthController';
 import { authenticate } from '../../middleware/auth';
 import { validate } from '../../middleware/validation';
 import { authLimiter } from '../../middleware/rateLimiter';
@@ -10,6 +12,19 @@ const router = Router();
 // Public routes
 router.post('/signup', authLimiter, signupValidator, validate, authController.signup);
 router.post('/login', authLimiter, loginValidator, validate, authController.login);
+
+// Google OAuth route
+router.post('/google', authLimiter, googleAuthController.googleLogin);
+
+// Password reset routes (public) - multiple paths for frontend compatibility
+router.post('/forgot-password', authLimiter, passwordResetController.sendResetOTP);
+router.post('/reset-password', authLimiter, passwordResetController.resetPassword);
+router.post('/resend-otp', authLimiter, passwordResetController.resendOTP);
+
+// Alternative routes with underscores (frontend uses these)
+router.post('/reset_password/send-otp', authLimiter, passwordResetController.sendResetOTP);
+router.post('/reset_password/verify-otp', authLimiter, passwordResetController.resetPassword);
+router.post('/reset_password/resend-otp', authLimiter, passwordResetController.resendOTP);
 
 // Protected routes
 // ⚠️ DEPRECATED - Use /profile routes instead (these are duplicates kept for compatibility)

@@ -14,7 +14,8 @@ export const earningController = {
           data: {
             total_balance: 0,
             total_unclaimed_reward: 0,
-            total_earnings: 0
+            total_earnings: 0,
+            total_tasks: 0
           }
         });
         return;
@@ -31,7 +32,8 @@ export const earningController = {
         data: {
           total_balance: 0,
           total_unclaimed_reward: 0,
-          total_earnings: 0
+          total_earnings: 0,
+          total_tasks: 0
         }
       });
     }

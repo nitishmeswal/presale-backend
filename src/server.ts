@@ -6,8 +6,13 @@ import { cronService } from './services/cronService';
 const PORT = config.PORT || 3001;
 
 const server = app.listen(PORT, () => {
+  const apiUrl = config.NODE_ENV === 'production'
+    ? `https://api.neurolov.ai/api/${config.API_VERSION}`
+    : `http://localhost:${PORT}/api/${config.API_VERSION}`;
+  
   logger.info(`🚀 Server running on port ${PORT} in ${config.NODE_ENV} mode`);
-  logger.info(`📊 API Documentation: http://localhost:${PORT}/api/v1/docs`);
+  logger.info(`📊 API Base URL: ${apiUrl}`);
+  logger.info(`🏥 Health Check: ${config.NODE_ENV === 'production' ? 'https://api.neurolov.ai/health' : `http://localhost:${PORT}/health`}`);
   
   // Start cron jobs
   cronService.startJobs();

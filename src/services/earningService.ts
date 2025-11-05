@@ -115,19 +115,7 @@ export const earningService = {
 
       logger.info(`💰 Claim calculation: Previous=${currentEarnings}, Claiming=${unclaimedAmount}, New Total=${newTotalEarnings}`);
 
-      // Try to update leaderboard (optional - don't fail if table doesn't exist)
-      const { error: leaderboardError } = await supabaseAdmin
-        .from('earnings_leaderboard')
-        .upsert({
-          user_id: userId,
-          total_earnings: newTotalEarnings,
-          updated_at: new Date().toISOString()
-        });
-
-      if (leaderboardError) {
-        logger.warn('⚠️ Could not update earnings leaderboard:', leaderboardError);
-        // Don't fail - leaderboard is optional
-      }
+      // Removed earnings_leaderboard update - using earnings_history only
 
       // Try to update earnings history (optional - don't fail if table doesn't exist)
       const { error: historyError } = await supabaseAdmin
@@ -207,9 +195,10 @@ export const earningService = {
     total_balance: number;
     total_unclaimed_reward: number;
     total_earnings: number;
+    total_tasks: number;
   }> {
     try {
-      // Get unclaimed rewards from user_profiles
+      // Get unclaimed rewards AND task_completed from user_profiles
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('user_profiles')
         .select('unclaimed_reward, task_completed')
@@ -221,6 +210,7 @@ export const earningService = {
       }
 
       const unclaimedReward = Number(profile?.unclaimed_reward) || 0;
+      const totalTasks = Number(profile?.task_completed) || 0;
 
       // Get total claimed earnings from earnings_history
       const { data: history, error: historyError } = await supabaseAdmin
@@ -236,19 +226,21 @@ export const earningService = {
       const totalBalance = Number(history?.total_amount) || 0;
       const totalEarnings = totalBalance + unclaimedReward;
 
-      logger.info(`📊 Earnings summary for ${userId}: Balance=${totalBalance}, Unclaimed=${unclaimedReward}, Total=${totalEarnings}`);
+      logger.info(`📊 Earnings summary for ${userId}: Balance=${totalBalance}, Unclaimed=${unclaimedReward}, Total=${totalEarnings}, Tasks=${totalTasks}`);
 
       return {
         total_balance: totalBalance,
         total_unclaimed_reward: unclaimedReward,
-        total_earnings: totalEarnings
+        total_earnings: totalEarnings,
+        total_tasks: totalTasks
       };
     } catch (error) {
       logger.error('Exception in getEarningsSummary:', error);
       return {
         total_balance: 0,
         total_unclaimed_reward: 0,
-        total_earnings: 0
+        total_earnings: 0,
+        total_tasks: 0
       };
     }
   },
@@ -339,17 +331,30 @@ export const earningService = {
     }
   },
 
-  // Get leaderboard
+  // Get leaderboard (OLD - use leaderboardService instead)
   async getLeaderboard(limit: number = 100): Promise<any[]> {
     try {
+      // Use earnings_history instead of earnings_leaderboard
       const { data, error } = await supabaseAdmin
-        .from('earnings_leaderboard')
-        .select('user_id, total_earnings, updated_at')
-        .order('total_earnings', { ascending: false })
+        .from('earnings_history')
+        .select(`
+          user_id,
+          total_amount,
+          user_profiles!inner (
+            user_name
+          )
+        `)
+        .order('total_amount', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
-      return data || [];
+
+      return (data || []).map((item: any, index) => ({
+        rank: index + 1,
+        user_id: item.user_id,
+        username: item.user_profiles?.user_name || 'Anonymous',
+        total_earnings: Number(item.total_amount) || 0,
+      }));
     } catch (error) {
       logger.error('Error getting leaderboard:', error);
       return [];

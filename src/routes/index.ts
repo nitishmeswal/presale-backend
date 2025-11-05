@@ -13,6 +13,8 @@ import updateDeviceUptimeRoutes from './update-device-uptime/index';
 import dailyCheckinRoutes from './daily-checkins/index';
 import supportRoutes from './support/index';
 import subscriptionRoutes from './subscriptions/index';
+import leaderboardRoutes from './leaderboard/index';
+import settingsRoutes from './settings/index';
 // ⚠️ DEPRECATED - Kept for compatibility
 import claimRewardsRoutes from './claim-rewards/index';
 import updateUnclaimedRewardsRoutes from './update-unclaimed-rewards/index';
@@ -31,11 +33,13 @@ router.get('/', (req, res) => {
 // Mount routes - matching old MVP API structure
 router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
+router.use('/settings', settingsRoutes); // User settings (delete account, change password)
 router.use('/devices', deviceRoutes);
 router.use('/device-session', sessionRoutes); // Changed to match old API
 router.use('/complete-task', taskRoutes); // Direct endpoint for POST
 router.use('/tasks', taskRoutes); // For GET /tasks/stats
 router.use('/earnings', earningRoutes);
+router.use('/leaderboard', leaderboardRoutes); // Top 10 leaderboard + user rank
 router.use('/daily-checkins', dailyCheckinRoutes); // Daily check-in streak
 router.use('/support', supportRoutes); // Support tickets
 router.use('/support-tickets', supportRoutes); // Support tickets (alternative path)

@@ -21,22 +21,25 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS configuration
+// CORS configuration - All origins from environment variables
+const allowedOrigins = [
+  config.FRONTEND_URL,
+  config.FRONTEND_PROD_URL,
+  ...config.ADDITIONAL_CORS_ORIGINS
+].filter(origin => origin && origin.length > 0); // Remove empty strings
+
+logger.info(`🔒 CORS enabled for origins: ${allowedOrigins.join(', ')}`);
+
 app.use(cors({
-  origin: [
-    config.FRONTEND_URL,
-    config.FRONTEND_PROD_URL,
-    'http://localhost:3000',
-    'https://your-vercel-app.vercel.app'
-  ],
+  origin: allowedOrigins,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Request parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Request parsing - Configurable body limit
+app.use(express.json({ limit: config.REQUEST_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: config.REQUEST_BODY_LIMIT }));
 
 // Compression
 app.use(compression());
