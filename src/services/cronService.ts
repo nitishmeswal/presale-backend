@@ -12,10 +12,10 @@ export const cronService = {
       const cron = require('node-cron');
       this.dailyUptimeReset(cron);
       
-      // Start plan sync cron (every 5 minutes)
-      planSyncCron.start();
+      // Plan sync disabled - syncs on login instead (see authService.ts)
+      // planSyncCron.start();
       
-      logger.info('🕐 Cron jobs started (uptime reset + plan sync)');
+      logger.info('🕐 Cron jobs started (uptime reset only)');
     } catch (error) {
       logger.warn('⚠️ node-cron not installed. Run: npm install node-cron @types/node-cron');
       logger.warn('⚠️ Cron jobs disabled until package is installed');

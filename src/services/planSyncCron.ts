@@ -14,14 +14,15 @@ export const planSyncCron = {
     try {
       logger.info('🔄 Starting plan sync cron job...');
 
-      // Get users who logged in within last 24 hours
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // Get users who logged in within last 2 hours (reduced from 24h)
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       
       const { data: activeUsers, error } = await supabaseAdmin
         .from('user_profiles')
         .select('id, email, plan')
-        .gte('last_login_at', oneDayAgo)
-        .limit(1000); // Limit to prevent overload
+        .gte('last_login_at', twoHoursAgo)
+        .order('last_login_at', { ascending: false })
+        .limit(50); // Reduced to 50 per sync to prevent overload
 
       if (error) {
         logger.error('Error fetching active users:', error);
@@ -67,12 +68,12 @@ export const planSyncCron = {
     // Run immediately on startup
     this.syncActiveUserPlans();
 
-    // Then run every 5 minutes
+    // Then run every 15 minutes (reduced frequency)
     setInterval(() => {
       this.syncActiveUserPlans();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 15 * 60 * 1000); // 15 minutes
 
-    logger.info('✅ Plan sync cron job started (every 5 minutes)');
+    logger.info('✅ Plan sync cron job started (every 15 minutes)');
   },
 
   /**

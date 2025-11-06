@@ -316,63 +316,103 @@ export const referralService = {
     tier2: { count: number; earnings: number };
     tier3: { count: number; earnings: number };
   }> {
-    // Get Tier 1 referrals with user info
-    const { data: tier1Referrals } = await supabaseAdmin
-      .from('referrals')
-      .select(`
-        referred_user_id,
-        created_at,
-        user_profiles!referrals_referred_user_id_fkey (
-          user_name
-        )
-      `)
-      .eq('referrer_id', userId);
+    try {
+      // Get Tier 1 referrals
+      const { data: tier1Referrals, error: refError } = await supabaseAdmin
+        .from('referrals')
+        .select('referred_user_id, created_at')
+        .eq('referrer_id', userId);
 
-    // Get Tier 1 earnings for each referral
-    const tier1Details = [];
-    if (tier1Referrals) {
-      for (const ref of tier1Referrals) {
-        const { data: earnings } = await supabaseAdmin
-          .from('earnings')
-          .select('amount')
-          .eq('user_id', userId)
-          .eq('reward_type', 'referral')
-          .contains('metadata', { referral_user_id: ref.referred_user_id, tier: 1 });
-
-        const totalEarnings = earnings?.reduce((sum, e) => sum + parseFloat(e.amount?.toString() || '0'), 0) || 0;
-
-        tier1Details.push({
-          username: (ref.user_profiles as any)?.user_name || 'Anonymous',
-          earnings: totalEarnings,
-          joinedAt: ref.created_at
-        });
+      if (refError) {
+        logger.error('Error fetching tier1 referrals:', refError);
+        throw new Error(refError.message);
       }
+
+      logger.info(`📊 Found ${tier1Referrals?.length || 0} tier 1 referrals`);
+
+      // Get Tier 1 earnings for each referral
+      const tier1Details = [];
+      if (tier1Referrals && tier1Referrals.length > 0) {
+        for (const ref of tier1Referrals) {
+          // Get user info
+          const { data: userProfile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('user_name')
+            .eq('id', ref.referred_user_id)
+            .single();
+
+          // Get earnings from this specific referral
+          const { data: earnings } = await supabaseAdmin
+            .from('earnings')
+            .select('amount, metadata')
+            .eq('user_id', userId)
+            .eq('reward_type', 'referral');
+
+          // Filter earnings for this specific tier 1 referral
+          const tier1Earnings = earnings?.filter((e: any) => 
+            e.metadata?.tier === 1 && e.metadata?.referral_user_id === ref.referred_user_id
+          ) || [];
+
+          const totalEarnings = tier1Earnings.reduce((sum, e) => sum + parseFloat(e.amount?.toString() || '0'), 0);
+
+          tier1Details.push({
+            username: userProfile?.user_name || 'Anonymous',
+            earnings: totalEarnings,
+            joinedAt: ref.created_at
+          });
+        }
+      }
+
+      logger.info(`✅ Breakdown tier1: ${tier1Details.length} users`);
+
+      // Get stats for tier 2 and 3 (no names for privacy)
+      const stats = await this.getReferralStats(userId);
+
+      return {
+        tier1: tier1Details,
+        tier2: stats.tier2,
+        tier3: stats.tier3
+      };
+    } catch (error) {
+      logger.error('Error getting referral breakdown:', error);
+      // Return empty data instead of throwing
+      return {
+        tier1: [],
+        tier2: { count: 0, earnings: 0 },
+        tier3: { count: 0, earnings: 0 }
+      };
     }
-
-    // Get stats for tier 2 and 3 (no names for privacy)
-    const stats = await this.getReferralStats(userId);
-
-    return {
-      tier1: tier1Details,
-      tier2: stats.tier2,
-      tier3: stats.tier3
-    };
   },
 
   // Claim pending referral rewards
-  async claimReferralRewards(userId: string): Promise<{ claimedAmount: number; message: string }> {
+  async claimReferralRewards(userId: string, earningType: string = 'referral'): Promise<{ claimedAmount: number; message: string }> {
     try {
-      // Get all pending referral earnings
-      const { data: pendingEarnings, error: fetchError } = await supabaseAdmin
+      logger.info(`📥 Claiming rewards for user ${userId}, type: ${earningType}`);
+
+      // Build the query based on earning_type
+      let query = supabaseAdmin
         .from('earnings')
-        .select('id, amount')
+        .select('id, amount, earning_type')
         .eq('user_id', userId)
-        .eq('reward_type', 'referral')
         .eq('is_claimed', false);
 
+      // Filter by earning type
+      if (earningType === 'referral') {
+        // For referral type, match all tier referral types
+        query = query.or('earning_type.eq.referral,reward_type.eq.referral');
+      } else {
+        // For other types, exact match
+        query = query.eq('earning_type', earningType);
+      }
+
+      const { data: pendingEarnings, error: fetchError } = await query;
+
       if (fetchError) {
+        logger.error('Error fetching pending earnings:', fetchError);
         throw new Error(fetchError.message);
       }
+
+      logger.info(`📊 Found ${pendingEarnings?.length || 0} pending earnings`);
 
       if (!pendingEarnings || pendingEarnings.length === 0) {
         return { claimedAmount: 0, message: 'No pending rewards to claim' };
@@ -380,16 +420,17 @@ export const referralService = {
 
       // Calculate total amount
       const totalAmount = pendingEarnings.reduce((sum, e) => sum + parseFloat(e.amount?.toString() || '0'), 0);
+      logger.info(`💰 Total amount to claim: ${totalAmount}`);
 
       // Update all to claimed
+      const earningIds = pendingEarnings.map(e => e.id);
       const { error: updateError } = await supabaseAdmin
         .from('earnings')
         .update({ is_claimed: true })
-        .eq('user_id', userId)
-        .eq('reward_type', 'referral')
-        .eq('is_claimed', false);
+        .in('id', earningIds);
 
       if (updateError) {
+        logger.error('Error updating earnings:', updateError);
         throw new Error(updateError.message);
       }
 
@@ -400,17 +441,19 @@ export const referralService = {
         .eq('id', userId)
         .single();
 
-      const currentUnclaimed = profile?.unclaimed_reward || 0;
+      const currentUnclaimed = parseFloat(profile?.unclaimed_reward?.toString() || '0');
+      const newUnclaimed = currentUnclaimed + totalAmount;
+
       await supabaseAdmin
         .from('user_profiles')
-        .update({ unclaimed_reward: currentUnclaimed + totalAmount })
+        .update({ unclaimed_reward: newUnclaimed })
         .eq('id', userId);
 
-      logger.info(`✅ Claimed ${totalAmount} SP referral rewards for user ${userId}`);
+      logger.info(`✅ Claimed ${totalAmount} SP rewards for user ${userId}. New unclaimed: ${newUnclaimed}`);
 
       return {
-        claimedAmount: totalAmount,
-        message: `Successfully claimed ${totalAmount.toFixed(2)} SP`
+        claimedAmount: Number(totalAmount.toFixed(2)),
+        message: `Successfully claimed ${totalAmount.toFixed(2)} SP from ${earningType} rewards`
       };
     } catch (error) {
       logger.error('Error claiming referral rewards:', error);

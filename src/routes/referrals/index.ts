@@ -77,7 +77,8 @@ router.get('/breakdown', async (req: Request, res: Response) => {
 router.post('/claim', async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId!;
-    const result = await referralService.claimReferralRewards(userId);
+    const { earning_type = 'referral' } = req.body;
+    const result = await referralService.claimReferralRewards(userId, earning_type);
     sendSuccess(res, result.message, result);
   } catch (error: any) {
     sendError(res, 'Failed to claim referral rewards', error.message, 400);

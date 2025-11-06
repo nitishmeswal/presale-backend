@@ -2,10 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger';
 
 // Compute App Supabase client (separate from NeuroSwarm Supabase)
-const computeSupabase = createClient(
-  process.env.COMPUTE_SUPABASE_URL || '',
-  process.env.COMPUTE_SUPABASE_ANON_KEY || ''
-);
+const COMPUTE_URL = process.env.COMPUTE_SUPABASE_URL || '';
+const COMPUTE_KEY = process.env.COMPUTE_SUPABASE_ANON_KEY || '';
+
+if (!COMPUTE_URL || !COMPUTE_KEY) {
+  logger.warn('⚠️ COMPUTE_SUPABASE_URL or COMPUTE_SUPABASE_ANON_KEY not set. Plan sync will fail silently.');
+}
+
+const computeSupabase = createClient(COMPUTE_URL, COMPUTE_KEY);
 
 export const computeAppSync = {
   /**
@@ -110,6 +114,14 @@ export const computeAppSync = {
    */
   async batchSyncPlans(emails: string[]): Promise<Map<string, string>> {
     try {
+      if (!COMPUTE_URL || !COMPUTE_KEY) {
+        logger.info('⏭️ Skipping batch sync - Compute App credentials not configured');
+        // Return all as free plan
+        const planMap = new Map<string, string>();
+        emails.forEach(email => planMap.set(email, 'free'));
+        return planMap;
+      }
+
       logger.info(`🔄 Batch syncing ${emails.length} user plans...`);
 
       const { data, error } = await computeSupabase
@@ -119,6 +131,7 @@ export const computeAppSync = {
 
       if (error) {
         logger.error('Error in batch sync:', error);
+        logger.error('Hint: Check COMPUTE_SUPABASE_URL and COMPUTE_SUPABASE_ANON_KEY in .env');
         return new Map();
       }
 
