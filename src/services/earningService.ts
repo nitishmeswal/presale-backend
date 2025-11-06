@@ -367,7 +367,7 @@ export const earningService = {
       // Fetch all earnings for the user with timestamps
       const { data: earnings, error } = await supabaseAdmin
         .from('earnings')
-        .select('amount, created_at, earning_type, reward_type')
+        .select('amount, created_at, type, earning_type, reward_type')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000); // Get last 1000 records
@@ -408,7 +408,7 @@ export const earningService = {
         }
 
         // Determine earning type and normalize to frontend format
-        let type = earning.earning_type || earning.reward_type || 'other';
+        let type = earning.type || earning.earning_type || earning.reward_type || 'other';
         
         // Normalize field names to match frontend expectations
         if (type === 'task_completion') type = 'task';
@@ -474,8 +474,8 @@ export const earningService = {
       return (earnings || []).map(e => ({
         id: e.id,
         amount: parseFloat(e.amount?.toString() || '0'),
-        type: e.reward_type || e.earning_type || e.type || 'other',
-        description: e.description || this.getDescriptionForType(e.reward_type || e.earning_type),
+        type: e.type || e.reward_type || e.earning_type || 'other',
+        description: e.description || this.getDescriptionForType(e.type || e.reward_type || e.earning_type),
         timestamp: e.created_at || e.timestamp,
         is_claimed: e.is_claimed || false,
         status: e.status || 'completed'

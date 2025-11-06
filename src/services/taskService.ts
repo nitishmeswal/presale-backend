@@ -16,24 +16,35 @@ export const taskService = {
     try {
       logger.info(`📝 Task completion: User=${userId}, Amount=${incrementAmount}, Type=${taskType}`);
 
-      // 1. Create earning record (unclaimed)
+      // 1. Create earning record (unclaimed) - matches exact schema
+      const earningData = {
+        user_id: userId,
+        amount: incrementAmount,
+        earning_type: 'other',
+        reward_type: 'task',
+        is_claimed: false,
+        description: `Task completion: ${taskType || 'unknown'}`,
+        metadata: taskId ? { task_id: taskId, hardware_tier: hardwareTier, multiplier } : null
+      };
+
+      logger.info('📝 Inserting earning:', earningData);
+
       const { data: earning, error: earningError } = await supabaseAdmin
         .from('earnings')
-        .insert({
-          user_id: userId,
-          amount: incrementAmount,
-          reward_type: 'task_completion',  // Keep for backwards compatibility
-          earning_type: 'task_completion',  // ✅ Use earning_type for chart grouping
-          is_claimed: false,
-          description: `Task completion: ${taskType || 'unknown'}`,
-          metadata: { task_id: taskId, hardware_tier: hardwareTier, multiplier }
-        })
+        .insert(earningData)
         .select()
         .single();
 
       if (earningError) {
-        logger.error('Error creating earning record:', earningError);
-        throw new Error('Failed to create earning record');
+        logger.error('❌ Error creating earning record:', {
+          error: earningError,
+          message: earningError.message,
+          details: earningError.details,
+          hint: earningError.hint,
+          code: earningError.code,
+          insertData: earningData
+        });
+        throw new Error(`Failed to create earning record: ${earningError.message || earningError.details || earningError.hint || 'Unknown error'}`);
       }
 
       // 2. Update user_profiles: increment task count and unclaimed rewards
@@ -95,7 +106,17 @@ export const taskService = {
         }
       }
 
-      logger.info(`✅ Task completed: TaskCount=${newTaskCount}, UnclaimedReward=${newUnclaimedReward}`);
+      logger.info(`✅ Task completed: TaskCount=${newTaskCount}, TotalUnclaimed=${newUnclaimedReward}`);
+
+      // 4. Distribute tiered royalty earnings to referrers
+      try {
+        const { referralService } = await import('./referralService');
+        await referralService.distributeRoyaltyEarnings(userId, incrementAmount);
+        logger.info(`💰 Royalty earnings distributed for task completion`);
+      } catch (royaltyError) {
+        logger.error('⚠️ Failed to distribute royalty earnings:', royaltyError);
+        // Don't fail the task completion if royalty distribution fails
+      }
 
       // 4. Return updated totals
       return {
@@ -103,7 +124,7 @@ export const taskService = {
         total_unclaimed_reward: newUnclaimedReward,
         task_count: newTaskCount,
         success: true,
-        task_id: earning.id
+        task_id: earning?.id
       };
     } catch (error) {
       logger.error('Error in completeTaskWithRewards:', error);
@@ -188,14 +209,15 @@ export const taskService = {
       session_id: task.session_id,
     });
 
-    // Create earning record
+    // Create earning record - matches exact schema
     await supabaseAdmin.from('earnings').insert({
       user_id: task.user_id,
-      session_id: task.session_id,
-      task_id: taskId,
       amount: task.reward,
-      type: 'task',
-      status: 'confirmed',
+      earning_type: 'other',
+      reward_type: 'task',
+      is_claimed: false,
+      description: `Task ${taskId} completed`,
+      metadata: { task_id: taskId, session_id: task.session_id }
     });
 
     return this.mapTaskFromDB(updatedTask);

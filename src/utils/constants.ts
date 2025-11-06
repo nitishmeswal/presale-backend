@@ -75,6 +75,13 @@ export const EARNINGS_CONFIG = {
   TRAINING_MULTIPLIER: 1.5,
   INFERENCE_MULTIPLIER: 1.0,
   VALIDATION_MULTIPLIER: 1.2,
-  REFERRAL_BONUS: 5,
-  REFERRAL_PERCENTAGE: 0.1, // 10% of referral's earnings
+  
+  // Referral Signup Bonuses
+  REFERRER_SIGNUP_BONUS: 250,  // Person who refers gets 250 SP
+  REFERRED_SIGNUP_BONUS: 500,  // Person who is referred gets 500 SP
+  
+  // Tiered Royalty Percentages
+  TIER_1_PERCENTAGE: 0.10,  // 10% from direct referrals
+  TIER_2_PERCENTAGE: 0.05,  // 5% from tier 1's referrals
+  TIER_3_PERCENTAGE: 0.025, // 2.5% from tier 2's referrals
 };
