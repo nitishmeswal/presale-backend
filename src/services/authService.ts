@@ -5,6 +5,7 @@ import { generateReferralCode } from '../utils/helpers';
 import { ERROR_MESSAGES } from '../utils/constants';
 import { AuthResponse, User, UpdateProfileRequest } from '../types/auth';
 import { computeAppSync } from './computeAppSync';
+import { referralService } from './referralService';
 import logger from '../utils/logger';
 
 export const authService = {
@@ -48,13 +49,37 @@ export const authService = {
       throw new Error(error.message);
     }
 
-    // If referral code provided, create referral record
+    // If referral code provided, verify and create referral relationship
     if (referralCode) {
-      await supabaseAdmin.from('referrals').insert({
-        referral_code: referralCode,
-        referred_user_id: newUser.id,
-        status: 'active',
-      });
+      try {
+        // Trim and uppercase the referral code
+        const cleanCode = referralCode.trim().toUpperCase();
+        logger.info(`🔗 Signup with referral code: ${cleanCode}`);
+        
+        // Verify the code exists
+        const verification = await referralService.verifyReferralCode(cleanCode);
+        
+        if (verification.valid && verification.referrer) {
+          // Prevent self-referral (shouldn't happen but just in case)
+          if (verification.referrer.id === newUser.id) {
+            logger.warn(`⚠️ User tried to refer themselves during signup`);
+          } else {
+            // Create proper referral with bonuses
+            await referralService.createReferral(
+              verification.referrer.id,  // referrer_id
+              newUser.id,                // referred_user_id
+              cleanCode
+            );
+            
+            logger.info(`✅ Referral created: ${newUser.email} referred by ${verification.referrer.username}`);
+          }
+        } else {
+          logger.warn(`⚠️ Invalid referral code during signup: ${cleanCode}`);
+        }
+      } catch (error) {
+        logger.error('Error processing referral during signup:', error);
+        // Don't fail signup if referral fails
+      }
     }
 
     // Generate JWT token
