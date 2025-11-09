@@ -13,8 +13,10 @@ const router = Router();
 router.post('/signup', authLimiter, signupValidator, validate, authController.signup);
 router.post('/login', authLimiter, loginValidator, validate, authController.login);
 
-// Google OAuth route
-router.post('/google', authLimiter, googleAuthController.googleLogin);
+// Google OAuth routes
+router.get('/google', authLimiter, googleAuthController.getGoogleAuthUrl);
+router.post('/google/callback', authLimiter, googleAuthController.handleGoogleCallback);
+router.post('/google', authLimiter, googleAuthController.googleLogin); // Legacy support
 
 // Password reset routes (public) - multiple paths for frontend compatibility
 router.post('/forgot-password', authLimiter, passwordResetController.sendResetOTP);

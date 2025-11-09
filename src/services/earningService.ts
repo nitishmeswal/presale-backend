@@ -367,7 +367,7 @@ export const earningService = {
       // Fetch all earnings for the user with timestamps
       const { data: earnings, error } = await supabaseAdmin
         .from('earnings')
-        .select('amount, created_at, type, earning_type, reward_type')
+        .select('amount, created_at, earning_type, reward_type')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000); // Get last 1000 records
@@ -408,7 +408,8 @@ export const earningService = {
         }
 
         // Determine earning type and normalize to frontend format
-        let type = earning.type || earning.earning_type || earning.reward_type || 'other';
+        // Prioritize reward_type for referrals, fallback to earning_type
+        let type = earning.reward_type || earning.earning_type || 'other';
         
         // Normalize field names to match frontend expectations
         if (type === 'task_completion') type = 'task';
@@ -446,6 +447,11 @@ export const earningService = {
         .slice(-limit); // Take last N periods
 
       logger.info(`📊 Chart data generated: ${chartData.length} periods for user ${userId}`);
+      logger.info(`📊 Raw earnings count: ${earnings?.length || 0}`);
+      logger.info(`📊 Type summary:`, typeSummary);
+      if (chartData.length > 0) {
+        logger.info(`📊 Sample chart data:`, chartData[0]);
+      }
 
       // Return just the array for frontend (wrapped in sendSuccess by controller)
       return chartData;

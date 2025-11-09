@@ -19,7 +19,7 @@ export const rateLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per window
+  max: 50, // Increased for debugging - TODO: fix frontend polling!
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later.',
@@ -91,6 +91,27 @@ export const claimLimiter = rateLimit({
   message: {
     success: false,
     message: 'Daily claim limit reached. Please try again tomorrow.',
+    timestamp: new Date().toISOString()
+  },
+});
+
+// Daily check-in rate limiter (permissive for GET, strict for POST)
+export const checkinGetLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute (for streak checks)
+  message: {
+    success: false,
+    message: 'Too many streak check requests. Please slow down.',
+    timestamp: new Date().toISOString()
+  },
+});
+
+export const checkinPostLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 check-in attempts per hour (should only need 1!)
+  message: {
+    success: false,
+    message: 'Too many check-in attempts. Please wait before trying again.',
     timestamp: new Date().toISOString()
   },
 });

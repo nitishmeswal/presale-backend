@@ -2,6 +2,7 @@ import { supabaseAdmin, supabase } from '../config/database';
 import { generateToken } from '../config/auth';
 import { generateReferralCode } from '../utils/helpers';
 import logger from '../utils/logger';
+import { randomUUID } from 'crypto';
 
 export const googleAuthService = {
   /**
@@ -33,8 +34,7 @@ export const googleAuthService = {
           await supabaseAdmin
             .from('user_profiles')
             .update({ 
-              auth_provider: 'google',
-              profile_image: googleUser.picture || existingUser.profile_image
+              auth_provider: 'google'
             })
             .eq('id', existingUser.id);
           
@@ -43,30 +43,53 @@ export const googleAuthService = {
         
         logger.info(`✅ Google user logged in: ${googleUser.email}`);
       } else {
-        // New Google user - create account
-        const userReferralCode = generateReferralCode();
-        
-        const { data: newUser, error } = await supabaseAdmin
+        // Check if this is a migrated user (email exists but different auth_provider)
+        const { data: migratedUser } = await supabaseAdmin
           .from('user_profiles')
-          .insert({
-            id: googleUser.id, // Use Google's user ID
-            email: googleUser.email,
-            user_name: googleUser.name || googleUser.email.split('@')[0],
-            auth_provider: 'google',
-            password_hash: null, // No password for Google users
-            profile_image: googleUser.picture || null,
-            referral_code: userReferralCode,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          logger.error('Error creating Google user:', error);
-          throw new Error('Failed to create user account');
-        }
+          .select('*')
+          .eq('email', googleUser.email)
+          .maybeSingle();
         
-        user = newUser;
-        logger.info(`✅ New Google user created: ${googleUser.email}`);
+        if (migratedUser) {
+          // Migrated user from old database - update to Google auth
+          await supabaseAdmin
+            .from('user_profiles')
+            .update({ 
+              auth_provider: 'google',
+              password_hash: null // Clear password for Google users
+            })
+            .eq('id', migratedUser.id);
+          
+          user = migratedUser;
+          logger.info(`✅ Migrated existing user to Google: ${googleUser.email} (preserved ID: ${migratedUser.id})`);
+        } else {
+          // Truly new Google user - create account
+          const userReferralCode = generateReferralCode();
+          const newUserId = randomUUID(); // Generate proper UUID
+          
+          logger.info(`🆕 Creating new Google user with UUID: ${newUserId}`);
+          
+          const { data: newUser, error } = await supabaseAdmin
+            .from('user_profiles')
+            .insert({
+              id: newUserId, // Use generated UUID, not Google's numeric ID
+              email: googleUser.email,
+              user_name: googleUser.name || googleUser.email.split('@')[0],
+              auth_provider: 'google',
+              password_hash: null, // No password for Google users
+              referral_code: userReferralCode,
+            })
+            .select()
+            .single();
+
+          if (error) {
+            logger.error('Error creating Google user:', error);
+            throw new Error('Failed to create user account');
+          }
+          
+          user = newUser;
+          logger.info(`✅ New Google user created: ${googleUser.email} (ID: ${newUserId})`);
+        }
       }
 
       // Generate JWT token for our backend
@@ -80,7 +103,6 @@ export const googleAuthService = {
           id: user.id,
           email: user.email,
           username: user.user_name,
-          profileImage: user.profile_image,
           referralCode: user.referral_code,
           plan: user.plan || 'free',
         },

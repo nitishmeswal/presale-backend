@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { dailyCheckinController } from '../../controllers/dailyCheckinController';
 import { authenticate } from '../../middleware/auth';
+import { checkinGetLimiter, checkinPostLimiter } from '../../middleware/rateLimiter';
 
 const router = Router();
 
@@ -8,9 +9,9 @@ const router = Router();
 router.use(authenticate);
 
 // GET /api/v1/daily-checkins/streak - Get user's current streak
-router.get('/streak', dailyCheckinController.getStreak);
+router.get('/streak', checkinGetLimiter, dailyCheckinController.getStreak);
 
 // POST /api/v1/daily-checkins - Perform daily check-in
-router.post('/', dailyCheckinController.performCheckin);
+router.post('/', checkinPostLimiter, dailyCheckinController.performCheckin);
 
 export default router;
