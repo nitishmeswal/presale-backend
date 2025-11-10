@@ -35,31 +35,40 @@ export const cronService = {
           .select('id, plan');
 
         if (profileError) {
-          logger.error('❌ Error fetching profiles for uptime reset:', profileError);
+          logger.error(`❌ Error fetching profiles for uptime reset: ${profileError.message || JSON.stringify(profileError)}`);
           return;
         }
 
+        // OPTIMIZED: Batch reset uptime in parallel
+        const batchSize = 20;
         let resetCount = 0;
 
-        // Reset uptime for each user based on their plan
-        for (const profile of profiles || []) {
-          const maxUptime = this.getMaxUptimeForPlan((profile.plan || 'free').toLowerCase());
+        for (let i = 0; i < (profiles || []).length; i += batchSize) {
+          const batch = profiles.slice(i, i + batchSize);
+          
+          const results = await Promise.allSettled(
+            batch.map(profile => {
+              const maxUptime = this.getMaxUptimeForPlan((profile.plan || 'free').toLowerCase());
+              return supabaseAdmin
+                .from('devices')
+                .update({ uptime: maxUptime })
+                .eq('user_id', profile.id);
+            })
+          );
 
-          const { error: updateError } = await supabaseAdmin
-            .from('devices')
-            .update({ uptime: maxUptime })
-            .eq('user_id', profile.id);
-
-          if (updateError) {
-            logger.error(`❌ Error resetting uptime for user ${profile.id}:`, updateError);
-          } else {
-            resetCount++;
-          }
+          // Count successes
+          results.forEach((result, idx) => {
+            if (result.status === 'fulfilled' && !result.value.error) {
+              resetCount++;
+            } else if (result.status === 'rejected' || result.value.error) {
+              logger.error(`❌ Error resetting uptime for user ${batch[idx].id}`);
+            }
+          });
         }
 
         logger.info(`✅ Daily uptime reset complete: ${resetCount} users updated`);
-      } catch (error) {
-        logger.error('❌ Exception in daily uptime reset:', error);
+      } catch (error: any) {
+        logger.error(`❌ Exception in daily uptime reset: ${error.message || JSON.stringify(error)}`);
       }
     });
 

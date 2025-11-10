@@ -61,8 +61,8 @@ export const dailyCheckinService = {
         canCheckIn: true,
         canCheckInToday: true
       };
-    } catch (error) {
-      logger.error('Error getting streak:', error);
+    } catch (error: any) {
+      logger.error(`Error getting streak: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -104,7 +104,7 @@ export const dailyCheckinService = {
         });
 
       if (checkinError) {
-        logger.error(`❌ ${userId}: Insert failed:`, checkinError);
+        logger.error(`❌ ${userId}: Insert failed: ${checkinError.message || JSON.stringify(checkinError)}`);
         throw new Error(`Failed to save check-in: ${checkinError.message}`);
       }
 
@@ -147,8 +147,8 @@ export const dailyCheckinService = {
           canCheckInToday: false
         }
       };
-    } catch (error) {
-      logger.error('Check-in error:', error);
+    } catch (error: any) {
+      logger.error(`Check-in error: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   }

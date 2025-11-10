@@ -51,17 +51,17 @@ export const googleAuthService = {
           .maybeSingle();
         
         if (migratedUser) {
-          // Migrated user from old database - update to Google auth
+          // DUAL AUTH: Link Google to existing account WITHOUT removing password
+          // This allows user to login with BOTH Google and Email/Password
           await supabaseAdmin
             .from('user_profiles')
             .update({ 
-              auth_provider: 'google',
-              password_hash: null // Clear password for Google users
+              auth_provider: 'google' // Update provider but KEEP password_hash for dual auth
             })
             .eq('id', migratedUser.id);
           
           user = migratedUser;
-          logger.info(`✅ Migrated existing user to Google: ${googleUser.email} (preserved ID: ${migratedUser.id})`);
+          logger.info(`✅ Linked Google auth to existing account: ${googleUser.email} (preserved password for dual auth)`);
         } else {
           // Truly new Google user - create account
           const userReferralCode = generateReferralCode();
@@ -83,7 +83,7 @@ export const googleAuthService = {
             .single();
 
           if (error) {
-            logger.error('Error creating Google user:', error);
+            logger.error(`Error creating Google user: ${error.message || JSON.stringify(error)}`);
             throw new Error('Failed to create user account');
           }
           
@@ -108,8 +108,8 @@ export const googleAuthService = {
         },
         token,
       };
-    } catch (error) {
-      logger.error('❌ Google auth error:', error);
+    } catch (error: any) {
+      logger.error(`❌ Google auth error: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -126,13 +126,13 @@ export const googleAuthService = {
       });
 
       if (error) {
-        logger.error('Google token verification failed:', error);
+        logger.error(`Google token verification failed: ${error.message || JSON.stringify(error)}`);
         throw new Error('Invalid Google token');
       }
 
       return data.user;
-    } catch (error) {
-      logger.error('Google token verification error:', error);
+    } catch (error: any) {
+      logger.error(`Google token verification error: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },

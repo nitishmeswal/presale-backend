@@ -8,13 +8,18 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config/constants';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
+import { requestIdMiddleware } from './middleware/requestId';
 import logger from './utils/logger';
 import routes from './routes';
+import healthRoutes from './routes/health';
 
 const app: Application = express();
 
 // Trust proxy (important for AWS deployment)
 app.set('trust proxy', 1);
+
+// Request ID tracking (must be first)
+app.use(requestIdMiddleware);
 
 // Security middleware
 app.use(helmet({
@@ -52,15 +57,8 @@ app.use(morgan('combined', {
 // Rate limiting
 app.use(rateLimiter);
 
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    version: process.env.npm_package_version || '1.0.0'
-  });
-});
+// Health check endpoints (no auth required, no rate limiting)
+app.use(healthRoutes);
 
 // API routes
 app.use('/api/v1', routes);

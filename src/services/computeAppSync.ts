@@ -33,7 +33,7 @@ export const computeAppSync = {
           logger.info(`ℹ️ No unified account for ${email}, using free plan`);
           return 'free';
         }
-        logger.error('Error fetching plan from Compute App:', error);
+        logger.error(`Error fetching plan from Compute App: ${error.message || JSON.stringify(error)}`);
         return 'free';
       }
 
@@ -45,8 +45,8 @@ export const computeAppSync = {
       const plan = data.plan || 'free';
       logger.info(`✅ Plan synced: ${email} → ${plan} (linked to ${data.app_user_email})`);
       return plan;
-    } catch (error) {
-      logger.error('Exception in getUserPlan:', error);
+    } catch (error: any) {
+      logger.error(`Exception in getUserPlan: ${error.message || JSON.stringify(error)}`);
       return 'free'; // Fail safe to free plan
     }
   },
@@ -65,8 +65,8 @@ export const computeAppSync = {
         .single();
 
       return !error && !!data;
-    } catch (error) {
-      logger.error('Error checking account link:', error);
+    } catch (error: any) {
+      logger.error(`Error checking account link: ${error.message || JSON.stringify(error)}`);
       return false;
     }
   },
@@ -130,7 +130,7 @@ export const computeAppSync = {
         .in('swarm_user_email', emails);
 
       if (error) {
-        logger.error('Error in batch sync:', error);
+        logger.error(`Error in batch sync: ${error.message || JSON.stringify(error)}`);
         logger.error('Hint: Check COMPUTE_SUPABASE_URL and COMPUTE_SUPABASE_ANON_KEY in .env');
         return new Map();
       }
@@ -149,8 +149,8 @@ export const computeAppSync = {
 
       logger.info(`✅ Batch sync complete: ${planMap.size} plans synced`);
       return planMap;
-    } catch (error) {
-      logger.error('Exception in batchSyncPlans:', error);
+    } catch (error: any) {
+      logger.error(`Exception in batchSyncPlans: ${error.message || JSON.stringify(error)}`);
       return new Map();
     }
   },

@@ -36,7 +36,7 @@ export const leaderboardService = {
         .limit(10);
 
       if (top10Error) {
-        logger.error('Error fetching top 10:', top10Error);
+        logger.error(`Error fetching top 10: ${top10Error.message || JSON.stringify(top10Error)}`);
         return { top_10: [], total_users: 0 };
       }
 
@@ -59,31 +59,20 @@ export const leaderboardService = {
 
       let currentUser: LeaderboardEntry | undefined;
 
-      // Only fetch current user if NOT in top 10
+      // OPTIMIZED: Only fetch current user rank if NOT in top 10
       if (userId && !userInTop10) {
-        const { data: allUsers } = await supabaseAdmin
-          .from('earnings_history')
-          .select('user_id, total_amount')
-          .order('total_amount', { ascending: false });
+        // Use database window function to get rank efficiently
+        const { data: userData } = await supabaseAdmin
+          .rpc('get_user_leaderboard_rank', { user_uuid: userId });
 
-        if (allUsers && allUsers.length > 0) {
-          const userRankIndex = allUsers.findIndex(u => u.user_id === userId);
-
-          if (userRankIndex !== -1) {
-            const { data: userData } = await supabaseAdmin
-              .from('user_profiles')
-              .select('user_name')
-              .eq('id', userId)
-              .single();
-
-            currentUser = {
-              rank: userRankIndex + 1,
-              user_id: userId,
-              username: userData?.user_name || 'Anonymous',
-              total_earnings: Number(allUsers[userRankIndex].total_amount) || 0,
-              is_current_user: true,
-            };
-          }
+        if (userData && userData.length > 0 && userData[0].rank) {
+          currentUser = {
+            rank: userData[0].rank,
+            user_id: userId,
+            username: userData[0].user_name || 'Anonymous',
+            total_earnings: Number(userData[0].total_amount) || 0,
+            is_current_user: true,
+          };
         }
       }
 
@@ -92,8 +81,8 @@ export const leaderboardService = {
         current_user: currentUser,
         total_users: count || 0,
       };
-    } catch (error) {
-      logger.error('Error getting leaderboard:', error);
+    } catch (error: any) {
+      logger.error(`Error getting leaderboard: ${error.message || JSON.stringify(error)}`);
       return { top_10: [], total_users: 0 };
     }
   },
@@ -121,8 +110,8 @@ export const leaderboardService = {
         total_users: allRanked?.length || 0,
         total_earnings: Number(allRanked[rankIndex].total_amount) || 0,
       };
-    } catch (error) {
-      logger.error('Error getting user rank:', error);
+    } catch (error: any) {
+      logger.error(`Error getting user rank: ${error.message || JSON.stringify(error)}`);
       return null;
     }
   },

@@ -90,7 +90,7 @@ export const sessionService = {
 
       if (deviceError || !device) {
         logger.error(`Device not found or not owned by user. Device: ${deviceId}, User: ${userId}`);
-        logger.error('Database error:', deviceError);
+        logger.error(`Database error: ${deviceError ? deviceError.message || JSON.stringify(deviceError) : 'No error details'}`);
         throw new Error('Device not found or access denied');
       }
 
@@ -117,7 +117,7 @@ export const sessionService = {
         .single();
 
       if (updateError) {
-        logger.error('❌ Failed to update device:', updateError);
+        logger.error(`❌ Failed to update device: ${updateError.message || JSON.stringify(updateError)}`);
         throw new Error(`Failed to stop device session: ${updateError.message}`);
       }
 
@@ -137,8 +137,8 @@ export const sessionService = {
         session_created_at: updatedDevice.session_created_at,
         session_cleared: true
       };
-    } catch (error) {
-      logger.error('❌ Error stopping device session:', error);
+    } catch (error: any) {
+      logger.error(`❌ Error stopping device session: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -294,8 +294,8 @@ export const sessionService = {
         total_uptime: uptimeSeconds,  // Return the new remaining time
         completed_tasks: completedTasks
       };
-    } catch (error) {
-      logger.error('Error syncing node uptime:', error);
+    } catch (error: any) {
+      logger.error(`Error syncing node uptime: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },

@@ -76,8 +76,8 @@ export const authService = {
         } else {
           logger.warn(`⚠️ Invalid referral code during signup: ${cleanCode}`);
         }
-      } catch (error) {
-        logger.error('Error processing referral during signup:', error);
+      } catch (error: any) {
+        logger.error(`Error processing referral during signup: ${error.message || JSON.stringify(error)}`);
         // Don't fail signup if referral fails
       }
     }
@@ -111,6 +111,12 @@ export const authService = {
       throw new Error(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
 
+    // DUAL AUTH SUPPORT: Allow login with password if user has set one
+    // Google users can add password in Settings to enable email/password login
+    if (!user.password_hash) {
+      throw new Error('Password not set for this account. Please login with Google or add a password in Settings.');
+    }
+
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
@@ -130,8 +136,8 @@ export const authService = {
           .eq('id', user.id);
         currentPlan = computeAppPlan;
       }
-    } catch (syncError) {
-      logger.error('Error syncing plan on login:', syncError);
+    } catch (syncError: any) {
+      logger.error(`Error syncing plan on login: ${syncError.message || JSON.stringify(syncError)}`);
     }
 
     // Generate JWT token
@@ -186,8 +192,8 @@ export const authService = {
         currentPlan = computeAppPlan;
         logger.info(`✅ Plan updated successfully for ${user.email}`);
       }
-    } catch (syncError) {
-      logger.error('Error syncing plan from Compute App:', syncError);
+    } catch (syncError: any) {
+      logger.error(`Error syncing plan from Compute App: ${syncError.message || JSON.stringify(syncError)}`);
       // Continue with local plan if sync fails
     }
 

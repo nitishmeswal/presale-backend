@@ -36,8 +36,8 @@ export const subscriptionService = {
         max_uptime: planLimits.maxUptime,
         max_daily_earnings: planLimits.maxDailyEarnings
       };
-    } catch (error) {
-      logger.error('Error fetching subscription:', error);
+    } catch (error: any) {
+      logger.error(`Error fetching subscription: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },

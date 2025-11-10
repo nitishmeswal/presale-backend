@@ -21,7 +21,7 @@ export const supportService = {
         .single();
 
       if (error) {
-        logger.error('❌ Error creating support ticket:', error);
+        logger.error(`❌ Error creating support ticket: ${error.message || JSON.stringify(error)}`);
         throw new Error('Failed to create support ticket');
       }
 
@@ -34,8 +34,8 @@ export const supportService = {
         message: ticket.message,
         createdAt: ticket.created_at
       };
-    } catch (error) {
-      logger.error('Exception creating support ticket:', error);
+    } catch (error: any) {
+      logger.error(`Exception creating support ticket: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -50,13 +50,13 @@ export const supportService = {
         .order('created_at', { ascending: false });
 
       if (error) {
-        logger.error('Error fetching support tickets:', error);
+        logger.error(`Error fetching support tickets: ${error.message || JSON.stringify(error)}`);
         return [];
       }
 
       return tickets || [];
-    } catch (error) {
-      logger.error('Exception fetching support tickets:', error);
+    } catch (error: any) {
+      logger.error(`Exception fetching support tickets: ${error.message || JSON.stringify(error)}`);
       return [];
     }
   }

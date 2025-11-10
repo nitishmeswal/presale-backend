@@ -20,6 +20,11 @@ export const settingsService = {
         throw new Error('User not found');
       }
 
+      // Check if user has email/password authentication
+      if (!user.password_hash) {
+        throw new Error('Password verification not available for Google accounts. Please contact support to delete your account.');
+      }
+
       // Verify password
       const isValidPassword = await bcrypt.compare(password, user.password_hash);
       if (!isValidPassword) {
@@ -72,8 +77,8 @@ export const settingsService = {
       await emailService.sendAccountDeletionEmail(user.email, user.user_name);
 
       logger.info(`✅ Account deleted successfully for ${user.email}`);
-    } catch (error) {
-      logger.error('Error deleting account:', error);
+    } catch (error: any) {
+      logger.error(`Error deleting account: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -94,10 +99,16 @@ export const settingsService = {
         throw new Error('User not found');
       }
 
-      // Verify current password
-      const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
-      if (!isValidPassword) {
-        throw new Error('Current password is incorrect');
+      // Check if user has existing password (Google users may not have one)
+      if (user.password_hash) {
+        // User has password - verify current password
+        const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!isValidPassword) {
+          throw new Error('Current password is incorrect');
+        }
+      } else {
+        // Google user adding password for first time - no verification needed
+        logger.info(`🔐 Google user adding password authentication`);
       }
 
       // Hash new password
@@ -114,8 +125,8 @@ export const settingsService = {
       }
 
       logger.info(`✅ Password changed successfully for user ${userId}`);
-    } catch (error) {
-      logger.error('Error changing password:', error);
+    } catch (error: any) {
+      logger.error(`Error changing password: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -138,8 +149,8 @@ export const settingsService = {
       }
 
       logger.info(`✅ Settings updated for user ${userId}`);
-    } catch (error) {
-      logger.error('Error updating settings:', error);
+    } catch (error: any) {
+      logger.error(`Error updating settings: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },

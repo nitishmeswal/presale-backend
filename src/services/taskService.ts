@@ -55,7 +55,7 @@ export const taskService = {
         .single();
 
       if (profileError) {
-        logger.error('❌ Error fetching user profile:', profileError);
+        logger.error(`❌ Error fetching user profile: ${profileError.message || JSON.stringify(profileError)}`);
         throw new Error('Failed to fetch user profile');
       }
 
@@ -73,7 +73,7 @@ export const taskService = {
         .eq('id', userId);
 
       if (updateError) {
-        logger.error('❌ Error updating user profile:', updateError);
+        logger.error(`❌ Error updating user profile: ${updateError.message || JSON.stringify(updateError)}`);
         throw new Error('Failed to update user profile');
       }
 
@@ -113,8 +113,8 @@ export const taskService = {
         const { referralService } = await import('./referralService');
         await referralService.distributeRoyaltyEarnings(userId, incrementAmount);
         logger.info(`💰 Royalty earnings distributed for task completion`);
-      } catch (royaltyError) {
-        logger.error('⚠️ Failed to distribute royalty earnings:', royaltyError);
+      } catch (royaltyError: any) {
+        logger.error(`⚠️ Failed to distribute royalty earnings: ${royaltyError.message || JSON.stringify(royaltyError)}`);
         // Don't fail the task completion if royalty distribution fails
       }
 
@@ -126,8 +126,8 @@ export const taskService = {
         success: true,
         task_id: earning?.id
       };
-    } catch (error) {
-      logger.error('Error in completeTaskWithRewards:', error);
+    } catch (error: any) {
+      logger.error(`Error in completeTaskWithRewards: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },
@@ -302,8 +302,8 @@ export const taskService = {
         todayEarnings: todayEarnings_amount,
         averageEarningsPerTask: totalTasksCompleted > 0 ? totalEarnings / totalTasksCompleted : 0
       };
-    } catch (error) {
-      logger.error('Error getting task stats:', error);
+    } catch (error: any) {
+      logger.error(`Error getting task stats: ${error.message || JSON.stringify(error)}`);
       throw error;
     }
   },

@@ -51,75 +51,44 @@ export const referralService = {
     const { data: existing } = await supabaseAdmin
       .from('referrals')
       .select('*')
-      .eq('referred_id', referredUserId)  // ✅ Fixed: was referred_user_id
+      .eq('referrer_id', referrerId)
+      .eq('referred_id', referredUserId)
       .single();
 
     if (existing) {
-      throw new Error('You have already been referred by someone else');
+      throw new Error('Referral already exists');
     }
 
-    logger.info(`📤 Inserting referral: referrer_id=${referrerId}, referred_id=${referredUserId}, code=${referralCode}`);
+    try {
+      // ATOMIC TRANSACTION: Use database function for all-or-nothing creation
+      const { data, error } = await supabaseAdmin.rpc('create_referral_atomic', {
+        p_referrer_id: referrerId,
+        p_referred_id: referredUserId,
+        p_referral_code: referralCode,
+        p_referrer_bonus: EARNINGS_CONFIG.REFERRER_SIGNUP_BONUS,
+        p_referred_bonus: EARNINGS_CONFIG.REFERRED_SIGNUP_BONUS
+      });
 
-    const { data: referral, error } = await supabaseAdmin
-      .from('referrals')
-      .insert({
-        referrer_id: referrerId,
-        referred_id: referredUserId,  // ✅ Fixed: was referred_user_id
-        referral_code: referralCode,
-        status: 'active',
-        reward_amount: EARNINGS_CONFIG.REFERRER_SIGNUP_BONUS,
-      })
-      .select()
-      .single();
+      if (error) {
+        logger.error(`❌ Transaction failed: ${error.message || JSON.stringify(error)}`);
+        throw new Error(`Referral creation failed: ${error.message}`);
+      }
 
-    if (error) {
-      logger.error('❌ Database error inserting referral:', error);
-      throw new Error(error.message);
+      logger.info(`✅ Referral created atomically: ${JSON.stringify(data)}`);
+
+      // Fetch the created referral for return
+      const { data: referral } = await supabaseAdmin
+        .from('referrals')
+        .select('*')
+        .eq('referrer_id', referrerId)
+        .eq('referred_id', referredUserId)
+        .single();
+
+      return this.mapReferralFromDB(referral);
+    } catch (error: any) {
+      logger.error(`❌ Exception in createReferral: ${error.message || JSON.stringify(error)}`);
+      throw error;
     }
-
-    logger.info(`💰 Awarding bonuses - Referrer: ${EARNINGS_CONFIG.REFERRER_SIGNUP_BONUS} SP, Referred: ${EARNINGS_CONFIG.REFERRED_SIGNUP_BONUS} SP`);
-
-    // 1. Give 250 SP signup bonus to referrer
-    const { error: referrerEarningError } = await supabaseAdmin.from('earnings').insert({
-      user_id: referrerId,
-      amount: EARNINGS_CONFIG.REFERRER_SIGNUP_BONUS,
-      earning_type: 'other',
-      reward_type: 'referral',
-      is_claimed: false,
-      description: `Referral signup bonus for inviting user`,
-      metadata: { referred_user_id: referredUserId, type: 'signup_bonus' }
-    });
-
-    if (referrerEarningError) {
-      logger.error('❌ Failed to create referrer earning:', referrerEarningError);
-      throw new Error(`Failed to award referrer bonus: ${referrerEarningError.message}`);
-    }
-
-    // 2. Give 500 SP signup bonus to referred user
-    const { error: referredEarningError } = await supabaseAdmin.from('earnings').insert({
-      user_id: referredUserId,
-      amount: EARNINGS_CONFIG.REFERRED_SIGNUP_BONUS,
-      earning_type: 'other',
-      reward_type: 'referral',
-      is_claimed: false,
-      description: `Welcome bonus for joining via referral`,
-      metadata: { referrer_id: referrerId, type: 'welcome_bonus' }
-    });
-
-    if (referredEarningError) {
-      logger.error('❌ Failed to create referred user earning:', referredEarningError);
-      throw new Error(`Failed to award welcome bonus: ${referredEarningError.message}`);
-    }
-
-    logger.info(`✅ Earnings created successfully`);
-
-    // Update unclaimed rewards for both users
-    await this.updateUnclaimedRewards(referrerId, EARNINGS_CONFIG.REFERRER_SIGNUP_BONUS);
-    await this.updateUnclaimedRewards(referredUserId, EARNINGS_CONFIG.REFERRED_SIGNUP_BONUS);
-
-    logger.info(`✅ Updated unclaimed rewards for both users`);
-
-    return this.mapReferralFromDB(referral);
   },
 
   async updateUnclaimedRewards(userId: string, amount: number): Promise<void> {
@@ -132,7 +101,7 @@ export const referralService = {
       .single();
 
     if (selectError) {
-      logger.error('❌ Failed to fetch user profile:', selectError);
+      logger.error(`❌ Failed to fetch user profile: ${selectError.message || JSON.stringify(selectError)}`);
       throw new Error(`Failed to fetch profile for unclaimed rewards: ${selectError.message}`);
     }
 
@@ -147,7 +116,7 @@ export const referralService = {
       .eq('id', userId);
 
     if (updateError) {
-      logger.error('❌ Failed to update unclaimed_reward:', updateError);
+      logger.error(`❌ Failed to update unclaimed_reward: ${updateError.message || JSON.stringify(updateError)}`);
       throw new Error(`Failed to update unclaimed rewards: ${updateError.message}`);
     }
 
@@ -193,7 +162,7 @@ export const referralService = {
     });
 
     if (tier1Error) {
-      logger.error('❌ Failed to create Tier 1 earning:', tier1Error);
+      logger.error(`❌ Failed to create Tier 1 earning: ${tier1Error.message || JSON.stringify(tier1Error)}`);
       return; // Don't continue if tier 1 fails
     }
 
@@ -231,7 +200,7 @@ export const referralService = {
     });
 
     if (tier2Error) {
-      logger.error('❌ Failed to create Tier 2 earning:', tier2Error);
+      logger.error(`❌ Failed to create Tier 2 earning: ${tier2Error.message || JSON.stringify(tier2Error)}`);
       return; // Don't continue if tier 2 fails
     }
 
@@ -269,7 +238,7 @@ export const referralService = {
     });
 
     if (tier3Error) {
-      logger.error('❌ Failed to create Tier 3 earning:', tier3Error);
+      logger.error(`❌ Failed to create Tier 3 earning: ${tier3Error.message || JSON.stringify(tier3Error)}`);
       return;
     }
 
@@ -434,51 +403,54 @@ export const referralService = {
     tier3: { count: number; earnings: number };
   }> {
     try {
-      // Get Tier 1 referrals
+      // Get Tier 1 referrals (optimized: get IDs first)
       const { data: tier1Referrals, error: refError } = await supabaseAdmin
         .from('referrals')
         .select('referred_id, created_at')
         .eq('referrer_id', userId);
 
       if (refError) {
-        logger.error('Error fetching tier1 referrals:', refError);
+        logger.error(`Error fetching tier1 referrals: ${refError.message || JSON.stringify(refError)}`);
         throw new Error(refError.message);
       }
 
       logger.info(`📊 Found ${tier1Referrals?.length || 0} tier 1 referrals`);
 
-      // Get Tier 1 earnings for each referral
-      const tier1Details = [];
-      if (tier1Referrals && tier1Referrals.length > 0) {
-        for (const ref of tier1Referrals) {
-          // Get user info
-          const { data: userProfile } = await supabaseAdmin
-            .from('user_profiles')
-            .select('user_name')
-            .eq('id', ref.referred_id)
-            .single();
+      // OPTIMIZED: Get user names in batch (1 query instead of N)
+      const referredUserIds = (tier1Referrals || []).map((r: any) => r.referred_id);
+      const { data: userProfiles } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id, user_name')
+        .in('id', referredUserIds);
 
-          // Get earnings from this specific referral
-          const { data: earnings } = await supabaseAdmin
-            .from('earnings')
-            .select('amount, metadata')
-            .eq('user_id', userId)
-            .eq('reward_type', 'referral');
+      // Get ALL tier 1 earnings in ONE query
+      const { data: allEarnings } = await supabaseAdmin
+        .from('earnings')
+        .select('amount, metadata')
+        .eq('user_id', userId)
+        .eq('reward_type', 'referral');
 
-          // Filter earnings for this specific tier 1 referral
-          const tier1Earnings = earnings?.filter((e: any) => 
-            e.metadata?.tier === 1 && e.metadata?.referral_user_id === ref.referred_id
-          ) || [];
+      // Build lookup map
+      const profileMap = new Map((userProfiles || []).map((p: any) => [p.id, p.user_name]));
 
-          const totalEarnings = tier1Earnings.reduce((sum, e) => sum + parseFloat(e.amount?.toString() || '0'), 0);
+      // Build tier1Details efficiently
+      const tier1Details = (tier1Referrals || []).map((ref: any) => {
+        // Filter earnings for this specific tier 1 referral
+        const userEarnings = (allEarnings || []).filter((e: any) => 
+          e.metadata?.tier === 1 && e.metadata?.referral_user_id === ref.referred_id
+        );
 
-          tier1Details.push({
-            username: userProfile?.user_name || 'Anonymous',
-            earnings: totalEarnings,
-            joinedAt: ref.created_at
-          });
-        }
-      }
+        const totalEarnings = userEarnings.reduce(
+          (sum, e) => sum + parseFloat(e.amount?.toString() || '0'), 
+          0
+        );
+
+        return {
+          username: profileMap.get(ref.referred_id) || 'Anonymous',
+          earnings: totalEarnings,
+          joinedAt: ref.created_at
+        };
+      });
 
       logger.info(`✅ Breakdown tier1: ${tier1Details.length} users`);
 
@@ -490,8 +462,8 @@ export const referralService = {
         tier2: stats.tier2,
         tier3: stats.tier3
       };
-    } catch (error) {
-      logger.error('Error getting referral breakdown:', error);
+    } catch (error: any) {
+      logger.error(`Error getting referral breakdown: ${error.message || JSON.stringify(error)}`);
       // Return empty data instead of throwing
       return {
         tier1: [],
@@ -525,7 +497,7 @@ export const referralService = {
       const { data: pendingEarnings, error: fetchError } = await query;
 
       if (fetchError) {
-        logger.error('Error fetching pending earnings:', fetchError);
+        logger.error(`Error fetching pending earnings: ${fetchError.message || JSON.stringify(fetchError)}`);
         throw new Error(fetchError.message);
       }
 
@@ -547,7 +519,7 @@ export const referralService = {
         .in('id', earningIds);
 
       if (updateError) {
-        logger.error('Error updating earnings:', updateError);
+        logger.error(`Error updating earnings: ${updateError.message || JSON.stringify(updateError)}`);
         throw new Error(updateError.message);
       }
 
@@ -573,7 +545,7 @@ export const referralService = {
         message: `Successfully claimed ${totalAmount.toFixed(2)} SP from ${earningType} rewards`
       };
     } catch (error: any) {
-      logger.error('Error claiming referral rewards:', error);
+      logger.error(`Error claiming referral rewards: ${error.message || JSON.stringify(error)}`);
       return {
         claimedAmount: 0,
         message: error.message || 'Failed to claim rewards'
@@ -635,7 +607,7 @@ export const referralService = {
         message: `Successfully joined ${verification.referrer.username}'s referral network! You've earned ${EARNINGS_CONFIG.REFERRED_SIGNUP_BONUS} SP!`
       };
     } catch (error: any) {
-      logger.error('Error using referral code:', error);
+      logger.error(`Error using referral code: ${error.message || JSON.stringify(error)}`);
       return {
         success: false,
         message: error.message || 'Failed to use referral code'

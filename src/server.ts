@@ -37,7 +37,7 @@ process.on('SIGINT', () => {
 
 // Handle unhandled promise rejections (CRITICAL FOR AWS PRODUCTION)
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  logger.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error(`🚨 Unhandled Rejection - Reason: ${JSON.stringify(reason)}`);
   // Log but don't crash in production to maintain uptime
   if (config.NODE_ENV === 'production') {
     logger.error('⚠️ Unhandled promise rejection logged - server continuing');
@@ -46,8 +46,8 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
 
 // Handle uncaught exceptions (CRITICAL FOR AWS PRODUCTION)
 process.on('uncaughtException', (error: Error) => {
-  logger.error('🚨 FATAL: Uncaught Exception:', error);
-  logger.error('Stack trace:', error.stack);
+  logger.error(`🚨 FATAL: Uncaught Exception: ${error.message}`);
+  logger.error(`Stack trace: ${error.stack}`);
   logger.error('Server shutting down gracefully...');
   
   server.close(() => {

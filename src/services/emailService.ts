@@ -80,14 +80,14 @@ export const emailService = {
       });
 
       if (error) {
-        logger.error('Failed to send password reset OTP:', error);
+        logger.error(`Failed to send password reset OTP: ${error.message || JSON.stringify(error)}`);
         return false;
       }
 
       logger.info(`✅ Password reset OTP sent to ${email}`);
       return true;
-    } catch (error) {
-      logger.error('Exception sending password reset email:', error);
+    } catch (error: any) {
+      logger.error(`Exception sending password reset email: ${error.message || JSON.stringify(error)}`);
       return false;
     }
   },
@@ -132,14 +132,14 @@ export const emailService = {
       });
 
       if (error) {
-        logger.error('Failed to send account deletion email:', error);
+        logger.error(`Failed to send account deletion email: ${error.message || JSON.stringify(error)}`);
         return false;
       }
 
       logger.info(`✅ Account deletion confirmation sent to ${email}`);
       return true;
-    } catch (error) {
-      logger.error('Exception sending account deletion email:', error);
+    } catch (error: any) {
+      logger.error(`Exception sending account deletion email: ${error.message || JSON.stringify(error)}`);
       return false;
     }
   },

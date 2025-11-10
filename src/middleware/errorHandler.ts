@@ -1,47 +1,54 @@
 import { Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
-
-export interface AppError extends Error {
-  statusCode?: number;
-  isOperational?: boolean;
-}
+import { AppError } from '../utils/AppError';
 
 export const errorHandler = (
-  err: AppError,
+  err: any,
   req: Request,
   res: Response,
   next: NextFunction
-): void => {
+) => {
+  // Handle AppError instances
+  if (err instanceof AppError) {
+    logger.error({
+      message: err.message,
+      errorCode: err.errorCode,
+      statusCode: err.statusCode,
+      requestId: (req as any).id,
+      url: req.originalUrl,
+      method: req.method,
+      userId: (req as any).userId,
+    });
+
+    return res.status(err.statusCode).json(err.toJSON());
+  }
+
+  // Handle unexpected errors
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
 
-  // Log error
   logger.error({
     message: err.message,
     statusCode,
     stack: err.stack,
-    path: req.path,
+    requestId: (req as any).id,
+    url: req.originalUrl,
     method: req.method,
-    ip: req.ip,
+    userId: (req as any).userId,
   });
 
-  // Send error response
+  // Never expose internal error details in production
+  const responseMessage = process.env.NODE_ENV === 'production'
+    ? 'An unexpected error occurred'
+    : message;
+
   res.status(statusCode).json({
     success: false,
-    message,
-    error: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    timestamp: new Date().toISOString(),
+    error: {
+      message: responseMessage,
+      code: 'INTERNAL_ERROR',
+      statusCode,
+      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    }
   });
 };
-
-export class CustomError extends Error implements AppError {
-  statusCode: number;
-  isOperational: boolean;
-
-  constructor(message: string, statusCode: number = 500) {
-    super(message);
-    this.statusCode = statusCode;
-    this.isOperational = true;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}

@@ -4,8 +4,12 @@ import logger from '../utils/logger';
 
 /**
  * Cron service to periodically sync subscription plans from Compute App
- * Runs every 5 minutes for active users (logged in within last 24 hours)
+ * Runs every 15 minutes for active users (logged in within last 2 hours)
  */
+
+// Store interval ID to prevent memory leaks
+let syncIntervalId: ReturnType<typeof setInterval> | null = null;
+
 export const planSyncCron = {
   /**
    * Sync plans for all recently active users
@@ -25,7 +29,7 @@ export const planSyncCron = {
         .limit(50); // Reduced to 50 per sync to prevent overload
 
       if (error) {
-        logger.error('Error fetching active users:', error);
+        logger.error(`Error fetching active users: ${error.message || JSON.stringify(error)}`);
         return;
       }
 
@@ -40,40 +44,69 @@ export const planSyncCron = {
       const emails = activeUsers.map(u => u.email);
       const planMap = await computeAppSync.batchSyncPlans(emails);
 
-      // Update users whose plans have changed
-      let updatedCount = 0;
-      for (const user of activeUsers) {
+      // OPTIMIZED: Batch update all users at once
+      const usersToUpdate = activeUsers.filter(user => {
         const newPlan = planMap.get(user.email);
-        if (newPlan && newPlan !== user.plan) {
-          await supabaseAdmin
-            .from('user_profiles')
-            .update({ plan: newPlan })
-            .eq('id', user.id);
+        return newPlan && newPlan !== user.plan;
+      });
+
+      let updatedCount = 0;
+      if (usersToUpdate.length > 0) {
+        // Update all in parallel (batches of 10 to avoid overwhelming DB)
+        const batchSize = 10;
+        for (let i = 0; i < usersToUpdate.length; i += batchSize) {
+          const batch = usersToUpdate.slice(i, i + batchSize);
           
-          logger.info(`✅ Plan synced: ${user.email} ${user.plan} → ${newPlan}`);
-          updatedCount++;
+          await Promise.all(
+            batch.map(user => {
+              const newPlan = planMap.get(user.email);
+              logger.info(`✅ Plan synced: ${user.email} ${user.plan} → ${newPlan}`);
+              return supabaseAdmin
+                .from('user_profiles')
+                .update({ plan: newPlan })
+                .eq('id', user.id);
+            })
+          );
+          
+          updatedCount += batch.length;
         }
       }
 
       logger.info(`✅ Plan sync complete: ${updatedCount}/${activeUsers.length} users updated`);
-    } catch (error) {
-      logger.error('Exception in plan sync cron:', error);
+    } catch (error: any) {
+      logger.error(`Exception in plan sync cron: ${error.message || JSON.stringify(error)}`);
     }
   },
 
   /**
-   * Start the cron job (runs every 5 minutes)
+   * Start the cron job (runs every 15 minutes)
    */
   start(): void {
+    // Clear any existing interval (prevent duplicates on restart)
+    if (syncIntervalId) {
+      this.stop();
+    }
+
     // Run immediately on startup
     this.syncActiveUserPlans();
 
     // Then run every 15 minutes (reduced frequency)
-    setInterval(() => {
+    syncIntervalId = setInterval(() => {
       this.syncActiveUserPlans();
     }, 15 * 60 * 1000); // 15 minutes
 
     logger.info('✅ Plan sync cron job started (every 15 minutes)');
+  },
+
+  /**
+   * Stop the cron job (cleanup to prevent memory leaks)
+   */
+  stop(): void {
+    if (syncIntervalId) {
+      clearInterval(syncIntervalId);
+      syncIntervalId = null;
+      logger.info('🛑 Plan sync cron job stopped');
+    }
   },
 
   /**
@@ -101,8 +134,8 @@ export const planSyncCron = {
       }
 
       return newPlan;
-    } catch (error) {
-      logger.error('Error in manual plan sync:', error);
+    } catch (error: any) {
+      logger.error(`Error in manual plan sync: ${error.message || JSON.stringify(error)}`);
       return 'free';
     }
   },

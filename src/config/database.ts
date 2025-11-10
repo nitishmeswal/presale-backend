@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from './constants';
 import logger from '../utils/logger';
 
-// Admin client (for server-side operations)
+// PRODUCTION-GRADE: Admin client with connection pooling
 export const supabaseAdmin = createClient(
   config.SUPABASE_URL,
   config.SUPABASE_SERVICE_ROLE_KEY,
@@ -10,9 +10,21 @@ export const supabaseAdmin = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    db: {
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-application-name': 'neuroswarm-backend'
+      }
     }
   }
 );
+
+// Note: Supabase JS uses connection pooling internally via PostgREST
+// For even better performance, consider using a direct PostgreSQL client
+// with connection pooling (e.g., pg-pool) for heavy write operations
 
 // Regular client (for user operations)
 export const supabase = createClient(
@@ -29,14 +41,14 @@ export const testDatabaseConnection = async () => {
       .limit(1);
     
     if (error) {
-      logger.error('Database connection failed:', error);
+      logger.error(`Database connection failed: ${error.message || JSON.stringify(error)}`);
       return false;
     }
     
     logger.info('✅ Database connection successful');
     return true;
-  } catch (error) {
-    logger.error('Database connection error:', error);
+  } catch (error: any) {
+    logger.error(`Database connection error: ${error.message || JSON.stringify(error)}`);
     return false;
   }
 };
