@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/database';
+import { deviceService } from './deviceService';
 import logger from '../utils/logger';
 
 export const subscriptionService = {
@@ -55,5 +56,42 @@ export const subscriptionService = {
     };
 
     return limits[tier] || limits.free;
+  },
+
+  // Handle plan upgrade - reset device uptime to new plan limits
+  async upgradePlan(userId: string, newPlan: string): Promise<any> {
+    try {
+      logger.info(`🚀 Plan upgrade initiated: User ${userId} → ${newPlan}`);
+
+      // Update user's plan in database
+      const { error: updateError } = await supabaseAdmin
+        .from('user_profiles')
+        .update({ 
+          plan: newPlan.toLowerCase(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (updateError) {
+        throw new Error(`Failed to update user plan: ${updateError.message}`);
+      }
+
+      // Reset all user's devices to new plan's full uptime allowance
+      await deviceService.updateDeviceUptimeForPlanUpgrade(userId, newPlan);
+
+      // Get updated subscription details
+      const updatedSubscription = await this.getCurrentSubscription(userId);
+
+      logger.info(`✅ Plan upgrade complete: User ${userId} upgraded to ${newPlan}`);
+
+      return {
+        message: `Successfully upgraded to ${newPlan} plan`,
+        subscription: updatedSubscription,
+        uptime_reset: true
+      };
+    } catch (error: any) {
+      logger.error(`Error upgrading plan: ${error.message || JSON.stringify(error)}`);
+      throw error;
+    }
   }
 };

@@ -364,10 +364,10 @@ export const earningService = {
   // Get earnings chart data (daily/monthly/yearly)
   async getEarningsChart(userId: string, period: 'daily' | 'monthly' | 'yearly' = 'daily', limit: number = 30): Promise<any[]> {
     try {
-      // Fetch all earnings for the user with timestamps
+      // Fetch all earnings for the user with timestamps - using exact schema fields
       const { data: earnings, error } = await supabaseAdmin
         .from('earnings')
-        .select('amount, created_at, earning_type, reward_type')
+        .select('amount, earning_type, reward_type, created_at, description, is_claimed')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000); // Get last 1000 records
@@ -461,12 +461,12 @@ export const earningService = {
     }
   },
 
-  // Get transactions from earnings table (all earning sources)
+  // Get transactions from earnings table (all earning sources) - using exact schema
   async getTransactions(userId: string): Promise<any[]> {
     try {
       const { data: earnings, error } = await supabaseAdmin
         .from('earnings')
-        .select('*')
+        .select('id, amount, earning_type, reward_type, description, created_at, is_claimed, metadata')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -476,15 +476,18 @@ export const earningService = {
         return [];
       }
 
-      // Map to frontend-friendly format
+      logger.info(`📊 Transactions query returned ${earnings?.length || 0} records for user ${userId}`);
+
+      // Map to frontend-friendly format using exact database fields
       return (earnings || []).map(e => ({
         id: e.id,
         amount: parseFloat(e.amount?.toString() || '0'),
-        type: e.type || e.reward_type || e.earning_type || 'other',
-        description: e.description || this.getDescriptionForType(e.type || e.reward_type || e.earning_type),
-        timestamp: e.created_at || e.timestamp,
+        type: e.reward_type || e.earning_type || 'other',
+        description: e.description || this.getDescriptionForType(e.reward_type || e.earning_type || 'other'),
+        timestamp: e.created_at,
         is_claimed: e.is_claimed || false,
-        status: e.status || 'completed'
+        status: e.is_claimed ? 'claimed' : 'pending',
+        metadata: e.metadata || {}
       }));
     } catch (error) {
       logger.error('Exception getting transactions:', error);
@@ -492,17 +495,61 @@ export const earningService = {
     }
   },
 
-  // Helper to generate descriptions
+  // Helper to generate descriptions - updated for database schema
   getDescriptionForType(type: string): string {
     const descriptions: Record<string, string> = {
       'task_completion': 'Task Completion Reward',
+      'task': 'Task Completion Reward',
       'daily_checkin': 'Daily Check-in Bonus',
       'referral': 'Referral Bonus',
-      'referral_tier': 'Referral Tier Reward',
+      'referral_tier_1': 'Tier 1 Referral Bonus',
+      'referral_tier_2': 'Tier 2 Referral Bonus', 
+      'referral_tier_3': 'Tier 3 Referral Bonus',
       'bonus': 'Special Bonus',
-      'other': 'Earning'
+      'other': 'Earning',
+      'payout': 'Payout'
     };
     return descriptions[type] || 'Earning';
+  },
+
+  // Create or update earnings history record - for aggregated data
+  async updateEarningsHistory(userId: string): Promise<void> {
+    try {
+      // Calculate totals from earnings table
+      const { data: summary, error: summaryError } = await supabaseAdmin
+        .from('earnings')
+        .select('amount, task_count')
+        .eq('user_id', userId);
+
+      if (summaryError) {
+        logger.error('Error calculating earnings summary:', summaryError);
+        return;
+      }
+
+      const totalAmount = summary?.reduce((sum, earning) => sum + parseFloat(earning.amount || 0), 0) || 0;
+      const totalTasks = summary?.filter(e => e.task_count).reduce((sum, earning) => sum + (earning.task_count || 0), 0) || 0;
+
+      // Upsert earnings history (update if exists, insert if not)
+      const { error: historyError } = await supabaseAdmin
+        .from('earnings_history')
+        .upsert({
+          user_id: userId,
+          total_amount: totalAmount,
+          task_count: totalTasks,
+          timestamp: new Date().toISOString()
+        }, {
+          onConflict: 'user_id',
+          ignoreDuplicates: false
+        });
+
+      if (historyError) {
+        logger.error('Error updating earnings history:', historyError);
+      } else {
+        logger.info(`✅ Updated earnings history for user ${userId}: Amount=${totalAmount}, Tasks=${totalTasks}`);
+      }
+    } catch (error) {
+      logger.error('Exception updating earnings history:', error);
+    }
   },
 
   mapEarningFromDB(dbEarning: any): Earning {

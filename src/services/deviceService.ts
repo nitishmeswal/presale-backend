@@ -191,6 +191,45 @@ export const deviceService = {
     }
   },
 
+  // Update device uptime when user upgrades plan
+  async updateDeviceUptimeForPlanUpgrade(userId: string, newPlan: string): Promise<void> {
+    try {
+      // Get new plan's uptime limit
+      const planLimits: { [key: string]: number } = {
+        free: 14400,         // 4 hours
+        basic: 36000,        // 10 hours
+        ultimate: 64800,     // 18 hours
+        enterprise: 86400,   // 24 hours
+        // Legacy support
+        elite: 86400,        // Maps to enterprise
+        pro: 64800          // Maps to ultimate
+      };
+      
+      const newUptimeLimit = planLimits[newPlan.toLowerCase()] || 14400;
+      
+      logger.info(`🔄 Plan upgrade: Resetting all devices for user ${userId} to ${newUptimeLimit}s (${newPlan} plan)`);
+      
+      // Update ALL devices for this user to new plan's full uptime
+      const { error } = await supabaseAdmin
+        .from('devices')
+        .update({ 
+          uptime: newUptimeLimit,
+          updated_at: new Date().toISOString()
+        })
+        .eq('owner', userId);
+      
+      if (error) {
+        throw new Error(`Failed to update device uptime for plan upgrade: ${error.message}`);
+      }
+      
+      logger.info(`✅ Plan upgrade complete: All devices reset to ${newUptimeLimit}s uptime`);
+    } catch (error: any) {
+      logger.error(`Error updating device uptime for plan upgrade: ${error.message || JSON.stringify(error)}`);
+      throw error;
+    }
+  },
+
+
   mapDeviceFromDB(dbDevice: any): Device {
     return {
       id: dbDevice.id,

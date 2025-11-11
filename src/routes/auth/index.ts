@@ -28,6 +28,15 @@ router.post('/reset_password/send-otp', authLimiter, passwordResetController.sen
 router.post('/reset_password/verify-otp', authLimiter, passwordResetController.resetPassword);
 router.post('/reset_password/resend-otp', authLimiter, passwordResetController.resendOTP);
 
+// Alternative routes with hyphens (frontend compatibility)
+router.post('/reset-password/send-otp', authLimiter, passwordResetController.sendResetOTP);
+router.post('/reset-password/verify-otp', authLimiter, passwordResetController.resetPassword);
+router.post('/reset-password/resend-otp', authLimiter, passwordResetController.resendOTP);
+
+// NEW: Two-step password reset routes
+router.post('/verify-otp', authLimiter, passwordResetController.verifyOTP);
+router.post('/set-new-password', authLimiter, passwordResetController.setNewPassword);
+
 // Protected routes
 // ⚠️ DEPRECATED - Use /profile routes instead (these are duplicates kept for compatibility)
 router.get('/profile', authenticate, authController.getProfile);

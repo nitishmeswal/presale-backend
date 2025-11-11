@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/database';
 import { ERROR_MESSAGES, EARNINGS_CONFIG } from '../utils/constants';
 import { Task, TaskHistory } from '../types/task';
+import { earningService } from './earningService';
 import logger from '../utils/logger';
 
 export const taskService = {
@@ -20,11 +21,16 @@ export const taskService = {
       const earningData = {
         user_id: userId,
         amount: incrementAmount,
-        earning_type: 'other',
-        reward_type: 'task',
+        earning_type: 'other',        // Uses the enum default
+        reward_type: 'task_completion', // More specific type
         is_claimed: false,
-        description: `Task completion: ${taskType || 'unknown'}`,
-        metadata: taskId ? { task_id: taskId, hardware_tier: hardwareTier, multiplier } : null
+        description: `Completed ${taskType || 'unknown'} task`,
+        metadata: taskId ? { 
+          task_id: taskId, 
+          task_type: taskType,
+          hardware_tier: hardwareTier, 
+          multiplier: multiplier || 1 
+        } : null
       };
 
       logger.info('📝 Inserting earning:', earningData);
@@ -118,7 +124,16 @@ export const taskService = {
         // Don't fail the task completion if royalty distribution fails
       }
 
-      // 4. Return updated totals
+      // 4. Update earnings history for chart/analytics
+      try {
+        await earningService.updateEarningsHistory(userId);
+        logger.info(`✅ Earnings history updated after task completion`);
+      } catch (historyError: any) {
+        logger.error(`⚠️ Failed to update earnings history: ${historyError.message}`);
+        // Don't fail the task completion if history update fails
+      }
+
+      // 5. Return updated totals
       return {
         unclaimed_reward: incrementAmount,
         total_unclaimed_reward: newUnclaimedReward,

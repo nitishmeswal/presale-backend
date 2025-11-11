@@ -67,4 +67,47 @@ export const passwordResetController = {
       sendError(res, error.message || 'Failed to resend OTP', error.toString(), 400);
     }
   },
+
+  // POST /api/v1/auth/verify-otp - Verify OTP only (without password reset)
+  async verifyOTP(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, otp } = req.body;
+
+      if (!email || !otp) {
+        sendError(res, 'Missing required fields', 'Email and OTP are required', 400);
+        return;
+      }
+
+      await passwordResetService.verifyOTP(email, otp);
+      
+      sendSuccess(res, 'OTP verified successfully', { verified: true });
+    } catch (error: any) {
+      logger.error('Exception in POST /auth/verify-otp:', error);
+      sendError(res, error.message || 'Failed to verify OTP', error.toString(), 400);
+    }
+  },
+
+  // POST /api/v1/auth/set-new-password - Set new password after OTP verification
+  async setNewPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, new_password } = req.body;
+
+      if (!email || !new_password) {
+        sendError(res, 'Missing required fields', 'Email and new password are required', 400);
+        return;
+      }
+
+      if (new_password.length < 6) {
+        sendError(res, 'Invalid password', 'Password must be at least 6 characters long', 400);
+        return;
+      }
+
+      await passwordResetService.resetPasswordWithVerifiedOTP(email, new_password);
+      
+      sendSuccess(res, 'Password reset successfully', { reset: true });
+    } catch (error: any) {
+      logger.error('Exception in POST /auth/set-new-password:', error);
+      sendError(res, error.message || 'Failed to reset password', error.toString(), 400);
+    }
+  },
 };

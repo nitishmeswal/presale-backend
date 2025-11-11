@@ -9,8 +9,11 @@ export const emailService = {
    */
   async sendPasswordResetOTP(email: string, otp: string, username: string): Promise<boolean> {
     try {
+      logger.info(`📧 Attempting to send password reset OTP to: ${email}`);
+      logger.info(`🔑 RESEND_API_KEY configured: ${process.env.RESEND_API_KEY ? 'Yes' : 'No'}`);
+      
       const { data, error } = await resend.emails.send({
-        from: 'NeuroSwarm <noreply@neurolov.ai>',
+        from: 'NeuroSwarm <noreply@updates.neurolov.ai>',
         to: [email],
         subject: '🔐 Reset Your NeuroSwarm Password',
         html: `
@@ -80,11 +83,13 @@ export const emailService = {
       });
 
       if (error) {
-        logger.error(`Failed to send password reset OTP: ${error.message || JSON.stringify(error)}`);
+        logger.error(`❌ Resend API Error: ${error.message || JSON.stringify(error)}`);
+        logger.error(`Error details: ${JSON.stringify(error, null, 2)}`);
         return false;
       }
 
-      logger.info(`✅ Password reset OTP sent to ${email}`);
+      logger.info(`✅ Email sent successfully! Resend Email ID: ${data?.id}`);
+      logger.info(`📬 Password reset OTP delivered to ${email}`);
       return true;
     } catch (error: any) {
       logger.error(`Exception sending password reset email: ${error.message || JSON.stringify(error)}`);
@@ -98,7 +103,7 @@ export const emailService = {
   async sendAccountDeletionEmail(email: string, username: string): Promise<boolean> {
     try {
       const { data, error } = await resend.emails.send({
-        from: 'NeuroSwarm <noreply@neurolov.ai>',
+        from: 'NeuroSwarm <noreply@updates.neurolov.ai>',
         to: [email],
         subject: '👋 Your NeuroSwarm Account Has Been Deleted',
         html: `
