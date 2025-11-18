@@ -7,17 +7,15 @@ export const globalStatsController = {
   // GET /api/v1/global-stats - Get all global statistics (unified endpoint)
   async getGlobalStats(req: Request, res: Response): Promise<void> {
     try {
-      const userId = req.user?.userId; // Optional - works with or without auth
+      // Extract userId from authenticated request (JWTPayload has userId property)
+      const userId = req.user?.userId;
       
-      // If userId is provided, return complete stats with rank
-      if (userId) {
-        const stats = await globalStatsService.getCompleteGlobalStats(userId);
-        sendSuccess(res, 'Global statistics retrieved successfully', stats);
-      } else {
-        // Return basic stats without user rank
-        const stats = await globalStatsService.getGlobalStats();
-        sendSuccess(res, 'Global statistics retrieved successfully', stats);
-      }
+      logger.info(`📊 GET /global-stats - userId: ${userId || 'not authenticated'}`);
+      logger.info(`🔑 req.user object: ${JSON.stringify(req.user)}`);
+      
+      // Always use getCompleteGlobalStats (it handles null userId gracefully)
+      const stats = await globalStatsService.getCompleteGlobalStats(userId);
+      sendSuccess(res, 'Global statistics retrieved successfully', stats);
     } catch (error: any) {
       logger.error('Exception in GET /global-stats:', error);
       sendError(res, error.message || 'Failed to get global statistics', error.toString(), 500);

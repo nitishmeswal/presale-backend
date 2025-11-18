@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 
 import { config } from './config/constants';
 import { errorHandler } from './middleware/errorHandler';
@@ -45,6 +46,9 @@ app.use(cors({
 // Request parsing - Configurable body limit
 app.use(express.json({ limit: config.REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: config.REQUEST_BODY_LIMIT }));
+
+// Cookie parser - enables reading tokens from cookies
+app.use(cookieParser());
 
 // Compression
 app.use(compression());

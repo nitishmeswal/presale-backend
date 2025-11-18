@@ -30,12 +30,12 @@ export const cronService = {
         logger.info('🔄 Starting daily uptime reset...');
 
         // Get all users with their subscription plans
-        const { data: profiles, error: profileError } = await supabaseAdmin
+        const { data: profiles, error } = await supabaseAdmin
           .from('user_profiles')
-          .select('id, plan');
+          .select('id, subscription_plan');
 
-        if (profileError) {
-          logger.error(`❌ Error fetching profiles for uptime reset: ${profileError.message || JSON.stringify(profileError)}`);
+        if (error) {
+          logger.error(`❌ Error fetching profiles for uptime reset: ${error.message || JSON.stringify(error)}`);
           return;
         }
 
@@ -48,10 +48,10 @@ export const cronService = {
           
           const results = await Promise.allSettled(
             batch.map(profile => {
-              const maxUptime = this.getMaxUptimeForPlan((profile.plan || 'free').toLowerCase());
+              // Reset to 0 = full time available (countdown system)
               return supabaseAdmin
                 .from('devices')
-                .update({ uptime: maxUptime })
+                .update({ uptime: 0 })
                 .eq('user_id', profile.id);
             })
           );

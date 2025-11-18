@@ -104,7 +104,7 @@ export const googleAuthService = {
           email: user.email,
           username: user.user_name,
           referralCode: user.referral_code,
-          plan: user.plan || 'free',
+          plan: user.subscription_plan || 'free',
         },
         token,
       };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { globalStatsController } from '../../controllers/globalStatsController';
-import { optionalAuth } from '../../middleware/optionalAuth';
+import { optionalAuth } from '../../middleware/auth';
 
 const router = Router();
 

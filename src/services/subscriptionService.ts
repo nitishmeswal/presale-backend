@@ -11,7 +11,7 @@ export const subscriptionService = {
       // Get user profile with subscription plan
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('user_profiles')
-        .select('plan')
+        .select('subscription_plan')
         .eq('id', userId)
         .single();
 
@@ -25,7 +25,7 @@ export const subscriptionService = {
         };
       }
 
-      const tier = profile.plan || 'free';
+      const tier = profile.subscription_plan || 'free';
       const status = 'active'; // Plan is always active if it exists
 
       // Map tier to limits (case-insensitive)
@@ -67,7 +67,7 @@ export const subscriptionService = {
       const { error: updateError } = await supabaseAdmin
         .from('user_profiles')
         .update({ 
-          plan: newPlan.toLowerCase(),
+          subscription_plan: newPlan.toLowerCase(),
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);

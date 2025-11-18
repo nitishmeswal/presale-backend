@@ -248,6 +248,12 @@ export const globalStatsService = {
       total_text_tasks: number;
       total_video_tasks: number;
     };
+    current_user: {
+      user_id: string;
+      username: string;
+      total_earnings: number;
+      rank: number;
+    } | null;
   }> {
     try {
       // Get total users count
@@ -303,29 +309,64 @@ export const globalStatsService = {
       });
 
       // Get user rank if userId provided
-      let userRank = 'N/A';
+      let currentUser = null;
       if (userId) {
-        // Get all users ordered by total_balance
-        const { data: rankedUsers } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id, total_balance')
-          .order('total_balance', { ascending: false });
+        logger.info(`🔍 Calculating rank for userId: ${userId}`);
+        
+        // Get user's total earnings
+        const { data: userEarnings, error: earningsError } = await supabaseAdmin
+          .from('earnings_history')
+          .select('total_amount')
+          .eq('user_id', userId)
+          .single();
 
-        if (rankedUsers) {
-          const rankIndex = rankedUsers.findIndex(u => u.id === userId);
-          if (rankIndex !== -1) {
-            userRank = `#${rankIndex + 1}`;
-          }
+        if (earningsError) {
+          logger.warn(`⚠️ No earnings_history found for user ${userId}: ${earningsError.message}`);
         }
+
+        const userTotalEarnings = Number(userEarnings?.total_amount || 0);
+        logger.info(`💰 User total earnings: ${userTotalEarnings}`);
+
+        // Calculate rank by counting users with higher earnings
+        const { count: higherEarningsCount, error: rankError } = await supabaseAdmin
+          .from('earnings_history')
+          .select('*', { count: 'exact', head: true })
+          .gt('total_amount', userTotalEarnings);
+
+        if (rankError) {
+          logger.error(`❌ Error calculating rank: ${rankError.message}`);
+        }
+
+        const rank = (higherEarningsCount || 0) + 1;
+        logger.info(`🏆 Calculated rank: ${rank}`);
+
+        // Get username
+        const { data: userProfile } = await supabaseAdmin
+          .from('user_profiles')
+          .select('user_name')
+          .eq('id', userId)
+          .single();
+
+        currentUser = {
+          user_id: userId,
+          username: userProfile?.user_name || 'Unknown',
+          total_earnings: userTotalEarnings,
+          rank: rank
+        };
+        
+        logger.info(`✅ Current user object: ${JSON.stringify(currentUser)}`);
+      } else {
+        logger.info('⚠️ No userId provided, skipping rank calculation');
       }
 
       return {
-        user_rank: userRank,
+        user_rank: currentUser ? `#${currentUser.rank}` : 'N/A',
         global_sp: Number(globalSp.toFixed(2)),
         total_users: totalUsers || 0,
         global_compute_generated: Number(globalComputeGenerated.toFixed(2)),
         total_tasks: totalTasks,
-        task_breakdown: taskBreakdown
+        task_breakdown: taskBreakdown,
+        current_user: currentUser
       };
     } catch (error) {
       logger.error('Error getting complete global stats:', error);

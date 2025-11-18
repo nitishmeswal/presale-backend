@@ -18,14 +18,23 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
+    let token: string | undefined;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Check Authorization header first
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+    
+    // Fallback to cookies if no Authorization header
+    if (!token && req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+
+    if (!token) {
       sendError(res, ERROR_MESSAGES.UNAUTHORIZED, 'No token provided', 401);
       return;
     }
-
-    const token = authHeader.substring(7);
 
     try {
       const decoded = verifyToken(token);
@@ -47,10 +56,20 @@ export const optionalAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
+    let token: string | undefined;
 
+    // Check Authorization header first
+    const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
+      token = authHeader.substring(7);
+    }
+    
+    // Fallback to cookies if no Authorization header
+    if (!token && req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+
+    if (token) {
       try {
         const decoded = verifyToken(token);
         req.user = decoded;

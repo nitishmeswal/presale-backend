@@ -9,6 +9,17 @@ export const authController = {
     try {
       const { email, password, username, referralCode } = req.body;
       const result = await authService.signup(email, password, username, referralCode);
+      
+      // Set token in cookie
+      res.cookie('token', result.token, {
+        httpOnly: false, // Allow frontend to read for Authorization header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
+      });
+      
       sendSuccess(res, SUCCESS_MESSAGES.USER_CREATED, result, 201);
     } catch (error: any) {
       sendError(res, error.message || 'Signup failed', error.toString(), 400);
@@ -19,6 +30,17 @@ export const authController = {
     try {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
+      
+      // Set token in cookie
+      res.cookie('token', result.token, {
+        httpOnly: false, // Allow frontend to read for Authorization header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
+      });
+      
       sendSuccess(res, SUCCESS_MESSAGES.LOGIN_SUCCESS, result);
     } catch (error: any) {
       sendError(res, error.message || ERROR_MESSAGES.INVALID_CREDENTIALS, error.toString(), 401);

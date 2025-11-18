@@ -23,7 +23,7 @@ export const planSyncCron = {
       
       const { data: activeUsers, error } = await supabaseAdmin
         .from('user_profiles')
-        .select('id, email, plan')
+        .select('id, email, subscription_plan')
         .gte('last_login_at', twoHoursAgo)
         .order('last_login_at', { ascending: false })
         .limit(50); // Reduced to 50 per sync to prevent overload
@@ -47,7 +47,7 @@ export const planSyncCron = {
       // OPTIMIZED: Batch update all users at once
       const usersToUpdate = activeUsers.filter(user => {
         const newPlan = planMap.get(user.email);
-        return newPlan && newPlan !== user.plan;
+        return newPlan && newPlan !== user.subscription_plan;
       });
 
       let updatedCount = 0;
@@ -60,10 +60,10 @@ export const planSyncCron = {
           await Promise.all(
             batch.map(user => {
               const newPlan = planMap.get(user.email);
-              logger.info(`✅ Plan synced: ${user.email} ${user.plan} → ${newPlan}`);
+              logger.info(`✅ Plan synced: ${user.email} ${user.subscription_plan} → ${newPlan}`);
               return supabaseAdmin
                 .from('user_profiles')
-                .update({ plan: newPlan })
+                .update({ subscription_plan: newPlan })
                 .eq('id', user.id);
             })
           );
@@ -120,17 +120,17 @@ export const planSyncCron = {
 
       const { data: user } = await supabaseAdmin
         .from('user_profiles')
-        .select('id, plan')
+        .select('id, subscription_plan')
         .eq('email', email)
         .single();
 
-      if (user && user.plan !== newPlan) {
+      if (user && user.subscription_plan !== newPlan) {
         await supabaseAdmin
           .from('user_profiles')
-          .update({ plan: newPlan })
+          .update({ subscription_plan: newPlan })
           .eq('id', user.id);
         
-        logger.info(`✅ Manual sync: ${email} ${user.plan} → ${newPlan}`);
+        logger.info(`✅ Manual sync: ${email} ${user.subscription_plan} → ${newPlan}`);
       }
 
       return newPlan;

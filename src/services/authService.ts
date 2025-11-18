@@ -125,14 +125,14 @@ export const authService = {
     }
 
     // 🔥 SYNC PLAN FROM COMPUTE APP ON LOGIN
-    let currentPlan = user.plan || 'free';
+    let currentPlan = user.subscription_plan || 'free';
     try {
       const computeAppPlan = await computeAppSync.getUserPlan(user.email);
       if (computeAppPlan !== currentPlan) {
         logger.info(`📊 Login: Plan sync ${user.email} ${currentPlan} → ${computeAppPlan}`);
         await supabaseAdmin
           .from('user_profiles')
-          .update({ plan: computeAppPlan })
+          .update({ subscription_plan: computeAppPlan })
           .eq('id', user.id);
         currentPlan = computeAppPlan;
       }
@@ -165,32 +165,32 @@ export const authService = {
   },
 
   async getProfile(userId: string): Promise<User> {
-    const { data: user, error } = await supabaseAdmin
+    const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from('user_profiles')
-      .select('id, email, user_name, joined_at, referral_code, wallet_address, wallet_type, plan')
+      .select('id, email, user_name, joined_at, referral_code, wallet_address, subscription_plan')
       .eq('id', userId)
       .single();
 
-    if (error || !user) {
+    if (updateError || !updatedUser) {
       throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
     }
 
     // 🔥 SYNC PLAN FROM COMPUTE APP
-    let currentPlan = user.plan || 'free';
+    let currentPlan = updatedUser.subscription_plan || 'free';
     try {
-      const computeAppPlan = await computeAppSync.getUserPlan(user.email);
+      const computeAppPlan = await computeAppSync.getUserPlan(updatedUser.email);
       
       // If plan changed, update local database
       if (computeAppPlan !== currentPlan) {
-        logger.info(`📊 Plan update detected: ${user.email} ${currentPlan} → ${computeAppPlan}`);
+        logger.info(`📊 Plan update detected: ${updatedUser.email} ${currentPlan} → ${computeAppPlan}`);
         
         await supabaseAdmin
           .from('user_profiles')
-          .update({ plan: computeAppPlan })
+          .update({ subscription_plan: computeAppPlan })
           .eq('id', userId);
         
         currentPlan = computeAppPlan;
-        logger.info(`✅ Plan updated successfully for ${user.email}`);
+        logger.info(`✅ Plan updated successfully for ${updatedUser.email}`);
       }
     } catch (syncError: any) {
       logger.error(`Error syncing plan from Compute App: ${syncError.message || JSON.stringify(syncError)}`);
@@ -207,14 +207,14 @@ export const authService = {
     const totalEarnings = earnings?.reduce((sum, e) => sum + e.amount, 0) || 0;
 
     return {
-      id: user.id,
-      email: user.email,
-      username: user.user_name,
-      createdAt: user.joined_at,
-      memberSince: user.joined_at,
+      id: updatedUser.id,
+      email: updatedUser.email,
+      username: updatedUser.user_name,
+      createdAt: updatedUser.joined_at,
+      memberSince: updatedUser.joined_at,
       totalEarnings,
-      referralCode: user.referral_code,
-      walletAddress: user.wallet_address || null,
+      referralCode: updatedUser.referral_code,
+      walletAddress: updatedUser.wallet_address || null,
       plan: currentPlan,
     };
   },
@@ -227,7 +227,7 @@ export const authService = {
       .from('user_profiles')
       .update(updates)
       .eq('id', userId)
-      .select('id, email, user_name, joined_at, referral_code, wallet_address, plan')
+      .select('id, email, user_name, joined_at, referral_code, wallet_address, subscription_plan')
       .single();
 
     if (error) {
@@ -242,7 +242,7 @@ export const authService = {
       memberSince: updatedUser.joined_at,
       referralCode: updatedUser.referral_code,
       walletAddress: updatedUser.wallet_address || null,
-      plan: updatedUser.plan || 'free',
+      plan: updatedUser.subscription_plan || 'free',
     };
   },
 

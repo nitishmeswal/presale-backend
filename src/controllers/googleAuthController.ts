@@ -80,6 +80,16 @@ export const googleAuthController = {
         picture: payload.picture || undefined,
       });
 
+      // Set token in cookie (httpOnly for security, sameSite for cross-origin)
+      res.cookie('token', result.token, {
+        httpOnly: false, // Allow frontend to read for Authorization header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
+      });
+
       sendSuccess(res, 'Google login successful', result);
     } catch (error: any) {
       logger.error('Google callback failed:', error);
@@ -107,6 +117,16 @@ export const googleAuthController = {
         email,
         name: name || email.split('@')[0],
         picture: picture || undefined,
+      });
+
+      // Set token in cookie (httpOnly for security, sameSite for cross-origin)
+      res.cookie('token', result.token, {
+        httpOnly: false, // Allow frontend to read for Authorization header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost'
       });
 
       sendSuccess(res, 'Google login successful', result);

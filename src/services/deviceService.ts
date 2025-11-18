@@ -36,11 +36,11 @@ export const deviceService = {
     // Get user's plan to set correct uptime
     const { data: userProfile } = await supabaseAdmin
       .from('user_profiles')
-      .select('plan')
+      .select('subscription_plan')
       .eq('id', userId)
       .single();
     
-    const plan = (userProfile?.plan || 'free').toLowerCase();
+    const plan = (userProfile?.subscription_plan || 'free').toLowerCase();
     const uptimeLimits: { [key: string]: number } = {
       free: 14400,         // 4 hours
       basic: 36000,        // 10 hours
